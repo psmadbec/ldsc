@@ -87,3 +87,10 @@ docs/_build/
 
 # intelliJ
 *.iml
+
+# mac OSX
+.DS_Store
+
+# tests
+test/simulate_test/sumstats/*
+test/simulate_test/ldscore/*
