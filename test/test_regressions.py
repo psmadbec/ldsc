@@ -14,7 +14,7 @@ def test_update_separators():
     ii3 = [False, True, False, True, True, False, False]
     ii4 = [False, True, False, True, True, False, True]
     ii5 = [True, True, True, True, True, True, True]
-    iis = map(np.array, [ii1, ii2, ii3, ii4, ii5])
+    iis = list(map(np.array, [ii1, ii2, ii3, ii4, ii5]))
     ids = np.arange(len(ii1))
     for ii in iis:
         s = np.arange(np.sum(ii) + 1)

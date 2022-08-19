@@ -12,19 +12,24 @@ class Test_Jackknife(unittest.TestCase):
     def test_separators(self):
         N = 20
         x = np.arange(N)
-        for i in xrange(2, int(np.floor(N / 2))):
+        for i in range(2, int(np.floor(N / 2))):
             s = jk.Jackknife.get_separators(N, i)
-            lengths = [len(x[s[j]:s[j + 1]]) for j in xrange(len(s) - 2)]
+            lengths = [len(x[s[j]:s[j + 1]]) for j in range(len(s) - 2)]
 
         self.assertTrue(max(lengths) - min(lengths) <= 1)
+
+    def np_almost_equal(self, np_array, compare_val):
+        for row in np_array:
+            for val in row:
+                nose.tools.assert_almost_equal(val, compare_val)
 
     def test_jknife_1d(self):
         pseudovalues = np.atleast_2d(np.arange(10)).T
         (est, var, se, cov) = jk.Jackknife.jknife(pseudovalues)
-        nose.tools.assert_almost_equal(var, 0.91666667)
-        nose.tools.assert_almost_equal(est, 4.5)
-        nose.tools.assert_almost_equal(cov, var)
-        nose.tools.assert_almost_equal(se ** 2, var)
+        self.np_almost_equal(var, 0.91666667)
+        self.np_almost_equal(est, 4.5)
+        self.np_almost_equal(cov, var)
+        self.np_almost_equal(se ** 2, var)
         self.assertTrue(not np.any(np.isnan(cov)))
         assert_array_equal(cov.shape, (1, 1))
         assert_array_equal(var.shape, (1, 1))
@@ -34,11 +39,10 @@ class Test_Jackknife(unittest.TestCase):
     def test_jknife_2d(self):
         pseudovalues = np.vstack([np.arange(10), np.arange(10)]).T
         (est, var, se, cov) = jk.Jackknife.jknife(pseudovalues)
-        assert_array_almost_equal(var, np.array([[0.91666667, 0.91666667]]))
-        assert_array_almost_equal(est, np.array([[4.5, 4.5]]))
-        assert_array_almost_equal(
-            cov, np.matrix([[0.91666667, 0.91666667], [0.91666667, 0.91666667]]))
-        assert_array_almost_equal(se ** 2, var)
+        self.np_almost_equal(var, 0.91666667)
+        self.np_almost_equal(est, 4.5)
+        self.np_almost_equal(cov, 0.91666667)
+        self.np_almost_equal(se ** 2, 0.91666667)
         assert_array_equal(cov.shape, (2, 2))
         assert_array_equal(var.shape, (1, 2))
         assert_array_equal(est.shape, (1, 2))
@@ -195,7 +199,7 @@ class Test_LsqtsqJackknifeFast(unittest.TestCase):
         x = np.atleast_2d(np.random.normal(size=(100, 2)))
         y = np.atleast_2d(np.random.normal(size=(100, 1)))
         print(x.shape)
-        for n_blocks in xrange(2, 49):
+        for n_blocks in range(2, 49):
             b1 = jk.LstsqJackknifeFast(x, y, n_blocks=n_blocks).est
             b2 = jk.LstsqJackknifeSlow(x, y, n_blocks=n_blocks).est
             assert_array_almost_equal(b1, b2)

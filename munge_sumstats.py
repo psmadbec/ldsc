@@ -144,7 +144,7 @@ def get_cname_map(flag, default, ignore):
     clean_ignore = [clean_header(x) for x in ignore]
     cname_map = {x: flag[x] for x in flag if x not in clean_ignore}
     cname_map.update(
-        {x: default[x] for x in default if x not in clean_ignore + flag.keys()})
+        {x: default[x] for x in default if x not in clean_ignore + list(flag.keys())})
     return cname_map
 
 
@@ -242,13 +242,13 @@ def parse_dat(dat_gen, convert_colname, merge_alleles, log, args):
         dat = dat.dropna(axis=0, how="any", subset=filter(
             lambda x: x != 'INFO', dat.columns)).reset_index(drop=True)
         drops['NA'] += old - len(dat)
-        dat.columns = map(lambda x: convert_colname[x], dat.columns)
+        dat.columns = list(map(lambda x: convert_colname[x], dat.columns))
 
         wrong_types = [c for c in dat.columns if c in numeric_cols and not np.issubdtype(dat[c].dtype, np.number)]
         if len(wrong_types) > 0:
             raise ValueError('Columns {} are expected to be numeric'.format(wrong_types))
 
-        ii = np.array([True for i in xrange(len(dat))])
+        ii = np.array([True for i in range(len(dat))])
         if args.merge_alleles:
             old = ii.sum()
             ii = dat.SNP.isin(merge_alleles.SNP)
@@ -257,7 +257,7 @@ def parse_dat(dat_gen, convert_colname, merge_alleles, log, args):
                 continue
 
             dat = dat[ii].reset_index(drop=True)
-            ii = np.array([True for i in xrange(len(dat))])
+            ii = np.array([True for i in range(len(dat))])
 
         if 'INFO' in dat.columns:
             old = ii.sum()
@@ -565,8 +565,8 @@ def munge_sumstats(args, p=True):
         cname_map = get_cname_map(
             flag_cnames, mod_default_cnames, ignore_cnames)
         if args.daner:
-            frq_u = filter(lambda x: x.startswith('FRQ_U_'), file_cnames)[0]
-            frq_a = filter(lambda x: x.startswith('FRQ_A_'), file_cnames)[0]
+            frq_u = list(filter(lambda x: x.startswith('FRQ_U_'), file_cnames))[0]
+            frq_a = list(filter(lambda x: x.startswith('FRQ_A_'), file_cnames))[0]
             N_cas = float(frq_a[6:])
             N_con = float(frq_u[6:])
             log.log(
@@ -581,7 +581,7 @@ def munge_sumstats(args, p=True):
             cname_map[frq_u] = 'FRQ'
 
         if args.daner_n:
-            frq_u = filter(lambda x: x.startswith('FRQ_U_'), file_cnames)[0]
+            frq_u = list(filter(lambda x: x.startswith('FRQ_U_'), file_cnames))[0]
             cname_map[frq_u] = 'FRQ'
             try:
                 dan_cas = clean_header(file_cnames[file_cnames.index('Nca')])
@@ -625,6 +625,7 @@ def munge_sumstats(args, p=True):
 
         for c in req_cols:
             if c not in cname_translation.values():
+                log.log(c)
                 raise ValueError('Could not find {C} column.'.format(C=c))
 
         # check aren't any duplicated column names in mapping
@@ -635,7 +636,7 @@ def munge_sumstats(args, p=True):
 
             # check multiple different column names don't map to same data field
             for head in cname_translation.values():
-                numc = cname_translation.values().count(head)
+                numc = list(cname_translation.values()).count(head)
                 if numc > 1:
                     raise ValueError('Found {num} different {C} columns'.format(C=head,num=str(numc)))
 
@@ -677,7 +678,7 @@ def munge_sumstats(args, p=True):
 
         # figure out which columns are going to involve sign information, so we can ensure
         # they're read as floats
-        signed_sumstat_cols = [k for k,v in cname_translation.items() if v=='SIGNED_SUMSTAT']
+        signed_sumstat_cols = [k for k, v in cname_translation.items() if v == 'SIGNED_SUMSTAT']
         dat_gen = pd.read_csv(args.sumstats, delim_whitespace=True, header=0,
                 compression=compression, usecols=cname_translation.keys(),
                 na_values=['.', 'NA'], iterator=True, chunksize=args.chunksize,
@@ -733,8 +734,7 @@ def munge_sumstats(args, p=True):
 
     except Exception:
         log.log('\nERROR converting summary statistics:\n')
-        ex_type, ex, tb = sys.exc_info()
-        log.log(traceback.format_exc(ex))
+        log.log(traceback.format_exc())
         raise
     finally:
         log.log('\nConversion finished at {T}'.format(T=time.ctime()))

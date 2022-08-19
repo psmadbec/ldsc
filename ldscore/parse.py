@@ -5,7 +5,6 @@ This module contains functions for parsing various ldsc-defined file formats.
 
 '''
 
-from __future__ import division
 import numpy as np
 import pandas as pd
 import os
@@ -32,7 +31,7 @@ def sub_chr(s, chrom):
 def get_present_chrs(fh, num):
     '''Checks which chromosomes exist, assuming that the file base will be appended by a dot in any suffix.'''
     chrs = []
-    for chrom in xrange(1,num):
+    for chrom in range(1, num):
         if glob.glob(sub_chr(fh, chrom) + '.*'):
             chrs.append(chrom)
     return chrs
@@ -79,7 +78,7 @@ def read_cts(fh, match_snps):
 
 def sumstats(fh, alleles=False, dropna=True):
     '''Parses .sumstats files. See docs/file_formats_sumstats.txt.'''
-    dtype_dict = {'SNP': str,   'Z': float, 'N': float, 'A1': str, 'A2': str}
+    dtype_dict = {'SNP': str, 'Z': float, 'N': float, 'A1': str, 'A2': str}
     compression = get_compression(fh)
     usecols = ['SNP', 'Z', 'N']
     if alleles:
@@ -124,7 +123,9 @@ def l2_parser(fh, compression):
 
 def annot_parser(fh, compression, frqfile_full=None, compression_frq=None):
     '''Parse annot files'''
-    df_annot = read_csv(fh, header=0, compression=compression).drop(['SNP','CHR', 'BP', 'CM'], axis=1, errors='ignore').astype(float)
+    df_annot = read_csv(fh, header=0, compression=compression)\
+        .drop(['SNP', 'CHR', 'BP', 'CM'], axis=1, errors='ignore')\
+        .astype(float)
     if frqfile_full is not None:
         df_frq = frq_parser(frqfile_full, compression_frq)
         df_annot = df_annot[(.95 > df_frq.FRQ) & (df_frq.FRQ > 0.05)]
@@ -187,7 +188,7 @@ def annot(fh_list, num=None, frqfile=None):
     annot_suffix = ['.annot' for fh in fh_list]
     annot_compression = []
     if num is not None:  # 22 files, one for each chromosome
-        chrs = get_present_chrs(fh, num+1)
+        chrs = get_present_chrs(fh_list[0], num+1)
         for i, fh in enumerate(fh_list):
             first_fh = sub_chr(fh, chrs[0]) + annot_suffix[i]
             annot_s, annot_comp_single = which_compression(first_fh)
@@ -280,7 +281,7 @@ def __ID_List_Factory__(colnames, keepcol, fname_end, header=None, usecols=None)
             z = pd.merge(self.IDList, merge_df, how='left', left_on=l, right_on=r,
                          sort=False)
             ii = z['keep'] == True
-            return np.nonzero(ii)[0]
+            return np.nonzero(list(ii))[0]
 
     return IDContainer
 

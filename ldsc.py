@@ -8,7 +8,6 @@ LDSC is a command line tool for estimating
     3. genetic covariance / correlation
 
 '''
-from __future__ import division
 import ldscore.ldscore as ld
 import ldscore.parse as ps
 import ldscore.sumstats as sumstats
@@ -17,7 +16,9 @@ import numpy as np
 import pandas as pd
 from subprocess import call
 from itertools import product
-import time, sys, traceback, argparse
+import time
+import traceback
+import argparse
 from functools import reduce
 
 
@@ -74,25 +75,24 @@ class Logger(object):
 
     '''
     def __init__(self, fh):
-        self.log_fh = open(fh, 'wb')
+        self.log_fh = open(fh, 'w')
 
     def log(self, msg):
         '''
         Print to log file and stdout with a single command.
 
         '''
-        print >>self.log_fh, msg
+        print(msg, file=self.log_fh)
         print(msg)
 
 
 def __filter__(fname, noun, verb, merge_obj):
-    merged_list = None
     if fname:
-        f = lambda x,n: x.format(noun=noun, verb=verb, fname=fname, num=n)
-        x = ps.FilterFile(fname)
+        f = lambda str_to_format, n: str_to_format.format(noun=noun, verb=verb, fname=fname, num=n)
+        id_list = ps.FilterFile(fname).IDList
         c = 'Read list of {num} {noun} to {verb} from {fname}'
-        print(f(c, len(x.IDList)))
-        merged_list = merge_obj.loj(x.IDList)
+        print(f(c, len(id_list)))
+        merged_list = merge_obj.loj(id_list)
         len_merged_list = len(merged_list)
         if len_merged_list > 0:
             c = 'After merging, {num} {noun} remain'
@@ -107,7 +107,7 @@ def annot_sort_key(s):
     '''For use with --cts-bin. Fixes weird pandas crosstab column order.'''
     if type(s) == tuple:
         s = [x.split('_')[0] for x in s]
-        s = map(lambda x: float(x) if x != 'min' else -float('inf'), s)
+        s = list(map(lambda x: float(x) if x != 'min' else -float('inf'), s))
     else:  # type(s) = str:
         s = s.split('_')[0]
         if s == 'min':
@@ -151,7 +151,7 @@ def ldscore(args, log):
                 n_annot, ma = len(annot.df.columns) - 4, len(annot.df)
                 log.log("Read {A} annotations for {M} SNPs from {f}".format(f=args.annot,
                     A=n_annot, M=ma))
-                annot_matrix = np.array(annot.df.iloc[:,4:])
+                annot_matrix = np.array(annot.df.iloc[:, 4:])
                 annot_colnames = annot.df.columns[4:]
                 keep_snps = None
                 if np.any(annot.df.SNP.values != array_snps.df.SNP.values):
@@ -291,6 +291,8 @@ def ldscore(args, log):
     elif args.ld_wind_cm:
         max_dist = args.ld_wind_cm
         coords = np.array(array_snps.df['CM'])[geno_array.kept_snps]
+    else:
+        raise ValueError('Must specify exactly one --ld-wind option')
 
     block_left = ld.getBlockLefts(coords, max_dist)
     if block_left[len(block_left)-1] == 0 and not args.yes_really:
@@ -315,7 +317,8 @@ def ldscore(args, log):
 
     log.log("Estimating LD Score.")
     lN = geno_array.ldScoreVarBlocks(block_left, args.chunk_size, annot=annot_matrix)
-    col_prefix = "L2"; file_suffix = "l2"
+    col_prefix = "L2"
+    file_suffix = "l2"
 
     if n_annot == 1:
         ldscore_colnames = [col_prefix+scale_suffix]
@@ -339,8 +342,8 @@ def ldscore(args, log):
         log.log('Reading list of {N} SNPs for which to print LD Scores from {F}'.format(\
                         F=args.print_snps, N=len(print_snps)))
 
-        print_snps.columns=['SNP']
-        df = df.ix[df.SNP.isin(print_snps.SNP),:]
+        print_snps.columns = ['SNP']
+        df = df[df.SNP.isin(print_snps.SNP)]
         if len(df) == 0:
             raise ValueError('After merging with --print-snps, no SNPs remain.')
         else:
@@ -361,14 +364,12 @@ def ldscore(args, log):
         M_5_50 = [np.sum(geno_array.maf > 0.05)]
 
     # print .M
-    fout_M = open(args.out + '.'+ file_suffix +'.M','wb')
-    print >>fout_M, '\t'.join(map(str,M))
-    fout_M.close()
+    with open('{}.{}.M'.format(args.out, file_suffix), 'w') as fout_M:
+        print('\t'.join(list(map(str, M))), file=fout_M)
 
     # print .M_5_50
-    fout_M_5_50 = open(args.out + '.'+ file_suffix +'.M_5_50','wb')
-    print >>fout_M_5_50, '\t'.join(map(str,M_5_50))
-    fout_M_5_50.close()
+    with open(args.out + '.'+ file_suffix +'.M_5_50', 'w') as fout_M_5_50:
+        print('\t'.join(list(map(str, M_5_50))), file=fout_M_5_50)
 
     # print annot matrix
     if (args.cts_bin is not None) and not args.no_print_annot:
@@ -384,19 +385,19 @@ def ldscore(args, log):
     # print LD Score summary
     pd.set_option('display.max_rows', 200)
     log.log('\nSummary of LD Scores in {F}'.format(F=out_fname+l2_suffix))
-    t = df.ix[:,4:].describe()
-    log.log( t.ix[1:,:] )
+    t = df.iloc[:,4:].describe()
+    log.log( t.iloc[1:,:] )
 
     np.seterr(divide='ignore', invalid='ignore')  # print NaN instead of weird errors
     # print correlation matrix including all LD Scores and sample MAF
     log.log('')
     log.log('MAF/LD Score Correlation Matrix')
-    log.log( df.ix[:,4:].corr() )
+    log.log( df.iloc[:,4:].corr() )
 
     # print condition number
     if n_annot > 1: # condition number of a column vector w/ nonzero var is trivially one
         log.log('\nLD Score Matrix Condition Number')
-        cond_num = np.linalg.cond(df.ix[:,5:])
+        cond_num = np.linalg.cond(df.iloc[:,5:])
         log.log( reg.remove_brackets(str(np.matrix(cond_num))) )
         if cond_num > 10000:
             log.log('WARNING: ill-conditioned LD Score Matrix!')
@@ -652,8 +653,7 @@ if __name__ == '__main__':
             print('Error: no analysis selected.')
             print('ldsc.py -h describes options.')
     except Exception:
-        ex_type, ex, tb = sys.exc_info()
-        log.log( traceback.format_exc(ex) )
+        log.log(traceback.format_exc())
         raise
     finally:
         log.log('Analysis finished at {T}'.format(T=time.ctime()) )

@@ -160,8 +160,7 @@ class LD_Score_Regression(object):
         self.intercept = intercept
         self.n_blocks = n_blocks
         tot_agg = self.aggregate(y, x_tot, N, M_tot, intercept)
-        initial_w = self._update_weights(
-            x_tot, w, N, M_tot, tot_agg, intercept)
+        initial_w = self._update_weights(x_tot, w, N, M_tot, tot_agg, intercept)
         Nbar = np.mean(N)  # keep condition number low
         x = np.multiply(N, x) / Nbar
         if not self.constrain_intercept:
@@ -182,8 +181,7 @@ class LD_Score_Regression(object):
             n1 = np.sum(step1_ii)
             self.twostep_filtered = n_snp - n1
             x1 = x[np.squeeze(step1_ii), :]
-            yp1, w1, N1, initial_w1 = map(
-                lambda a: a[step1_ii].reshape((n1, 1)), (yp, w, N, initial_w))
+            yp1, w1, N1, initial_w1 = list(map(lambda a: a[step1_ii].reshape((n1, 1)), (yp, w, N, initial_w)))
             update_func1 = lambda a: self._update_func(
                 a, x1, w1, N1, M_tot, Nbar, ii=step1_ii)
             step1_jknife = IRWLS(
@@ -207,10 +205,8 @@ class LD_Score_Regression(object):
             y = IRWLS._weight(yp, initial_w)
             jknife = jk.LstsqJackknifeFast(x, y, n_blocks)
         else:
-            update_func = lambda a: self._update_func(
-                a, x_tot, w, N, M_tot, Nbar, intercept)
-            jknife = IRWLS(
-                x, yp, update_func, n_blocks, slow=slow, w=initial_w)
+            update_func = lambda a: self._update_func(a, x_tot, w, N, M_tot, Nbar, intercept)
+            jknife = IRWLS(x, yp, update_func, n_blocks, slow=slow, w=initial_w)
 
         self.coef, self.coef_cov, self.coef_se = self._coef(jknife, Nbar)
         self.cat, self.cat_cov, self.cat_se =\
@@ -346,8 +342,7 @@ class Hsq(LD_Score_Regression):
                                      slow=slow, step1_ii=step1_ii, old_weights=old_weights)
         self.mean_chisq, self.lambda_gc = self._summarize_chisq(y)
         if not self.constrain_intercept:
-            self.ratio, self.ratio_se = self._ratio(
-                self.intercept, self.intercept_se, self.mean_chisq)
+            self.ratio, self.ratio_se = self._ratio(self.intercept, self.intercept_se, self.mean_chisq)
 
     def _update_func(self, x, ref_ld_tot, w_ld, N, M, Nbar, intercept=None, ii=None):
         '''
@@ -455,7 +450,7 @@ class Hsq(LD_Score_Regression):
         if self.n_annot > 1:
             if ref_ld_colnames is None:
                 ref_ld_colnames = ['CAT_' + str(i)
-                                   for i in xrange(self.n_annot)]
+                                   for i in range(self.n_annot)]
 
             out.append('Categories: ' + ' '.join(ref_ld_colnames))
 

@@ -77,7 +77,7 @@ class test_bed(unittest.TestCase):
                               keep_snps=keep_snps, keep_indivs=keep_indivs)
         assert bed.m == 1
         assert bed.n == 2
-        print bed.geno
+        print(bed.geno)
         assert bed.geno[0:4] == ba.bitarray('0001')
 
     @nose.tools.raises(ValueError)
