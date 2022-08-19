@@ -533,8 +533,8 @@ def munge_sumstats(args, p=True):
             raise ValueError(
                 '--no-alleles and --merge-alleles are not compatible.')
         if args.daner and args.daner_n:
-            raise ValueError('--daner and --daner-n are not compatible. Use --daner for sample ' + 
-	        'size from FRQ_A/FRQ_U headers, use --daner-n for values from Nca/Nco columns')
+            raise ValueError('--daner and --daner-n are not compatible. Use --daner for sample ' +
+                             'size from FRQ_A/FRQ_U headers, use --daner-n for values from Nca/Nco columns')
 
         if p:
             defaults = vars(parser.parse_args(''))
@@ -580,21 +580,22 @@ def munge_sumstats(args, p=True):
 
             cname_map[frq_u] = 'FRQ'
 
-	if args.daner_n:
-	    frq_u = filter(lambda x: x.startswith('FRQ_U_'), file_cnames)[0]
-	    cname_map[frq_u] = 'FRQ'
-	    try:
-	        dan_cas = clean_header(file_cnames[file_cnames.index('Nca')])
-	    except ValueError:
-	        raise ValueError('Could not find Nca column expected for daner-n format')
-	
-	    try:
-	        dan_con = clean_header(file_cnames[file_cnames.index('Nco')])
-	    except ValueError:
-	        raise ValueError('Could not find Nco column expected for daner-n format')
+        if args.daner_n:
+            frq_u = filter(lambda x: x.startswith('FRQ_U_'), file_cnames)[0]
+            cname_map[frq_u] = 'FRQ'
+            try:
+                dan_cas = clean_header(file_cnames[file_cnames.index('Nca')])
+            except ValueError:
+                raise ValueError('Could not find Nca column expected for daner-n format')
 
             cname_map[dan_cas] = 'N_CAS'
-	    cname_map[dan_con] = 'N_CON'
+
+            try:
+                dan_con = clean_header(file_cnames[file_cnames.index('Nco')])
+            except ValueError:
+                raise ValueError('Could not find Nco column expected for daner-n format')
+
+            cname_map[dan_con] = 'N_CON'
 
         cname_translation = {x: cname_map[clean_header(x)] for x in file_cnames if
                              clean_header(x) in cname_map}  # note keys not cleaned
@@ -627,24 +628,23 @@ def munge_sumstats(args, p=True):
                 raise ValueError('Could not find {C} column.'.format(C=c))
 
         # check aren't any duplicated column names in mapping
-	for field in cname_translation:
-	    numk = file_cnames.count(field)
-	    if numk > 1:
-		raise ValueError('Found {num} columns named {C}'.format(C=field,num=str(numk)))
+        for field in cname_translation:
+            numk = file_cnames.count(field)
+            if numk > 1:
+                raise ValueError('Found {num} columns named {C}'.format(C=field,num=str(numk)))
 
-        # check multiple different column names don't map to same data field
-        for head in cname_translation.values():
-            numc = cname_translation.values().count(head)
-	    if numc > 1:
-                raise ValueError('Found {num} different {C} columns'.format(C=head,num=str(numc)))
+            # check multiple different column names don't map to same data field
+            for head in cname_translation.values():
+                numc = cname_translation.values().count(head)
+                if numc > 1:
+                    raise ValueError('Found {num} different {C} columns'.format(C=head,num=str(numc)))
 
         if (not args.N) and (not (args.N_cas and args.N_con)) and ('N' not in cname_translation.values()) and\
                 (any(x not in cname_translation.values() for x in ['N_CAS', 'N_CON'])):
             raise ValueError('Could not determine N.')
         if ('N' in cname_translation.values() or all(x in cname_translation.values() for x in ['N_CAS', 'N_CON']))\
                 and 'NSTUDY' in cname_translation.values():
-            nstudy = [
-                x for x in cname_translation if cname_translation[x] == 'NSTUDY']
+            nstudy = [x for x in cname_translation if cname_translation[x] == 'NSTUDY']
             for x in nstudy:
                 del cname_translation[x]
         if not args.no_alleles and not all(x in cname_translation.values() for x in ['A1', 'A2']):

@@ -18,6 +18,7 @@ import pandas as pd
 from subprocess import call
 from itertools import product
 import time, sys, traceback, argparse
+from functools import reduce
 
 
 try:
@@ -37,8 +38,8 @@ MASTHEAD += "*******************************************************************
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
-pd.set_option('precision', 4)
-pd.set_option('max_colwidth',1000)
+pd.set_option('display.precision', 4)
+pd.set_option('max_colwidth', 1000)
 np.set_printoptions(linewidth=1000)
 np.set_printoptions(precision=4)
 
@@ -81,7 +82,7 @@ class Logger(object):
 
         '''
         print >>self.log_fh, msg
-        print msg
+        print(msg)
 
 
 def __filter__(fname, noun, verb, merge_obj):
@@ -90,12 +91,12 @@ def __filter__(fname, noun, verb, merge_obj):
         f = lambda x,n: x.format(noun=noun, verb=verb, fname=fname, num=n)
         x = ps.FilterFile(fname)
         c = 'Read list of {num} {noun} to {verb} from {fname}'
-        print f(c, len(x.IDList))
+        print(f(c, len(x.IDList)))
         merged_list = merge_obj.loj(x.IDList)
         len_merged_list = len(merged_list)
         if len_merged_list > 0:
             c = 'After merging, {num} {noun} remain'
-            print f(c, len_merged_list)
+            print(f(c, len_merged_list))
         else:
             error_msg = 'No {noun} retained for analysis'
             raise ValueError(f(error_msg, 0))
@@ -184,7 +185,7 @@ def ldscore(args, log):
                 raise ValueError(msg)
 
         else:
-            cts_colnames = ['ANNOT'+str(i) for i in xrange(len(cts_fnames))]
+            cts_colnames = ['ANNOT'+str(i) for i in range(len(cts_fnames))]
 
         log.log('Reading numbers with which to bin SNPs from {F}'.format(F=args.cts_bin))
 
@@ -215,7 +216,7 @@ def ldscore(args, log):
             name_breaks[0] = 'min'
             name_breaks[-1] = 'max'
             name_breaks = [str(x) for x in name_breaks]
-            labs = [name_breaks[i]+'_'+name_breaks[i+1] for i in xrange(n_breaks-1)]
+            labs = [name_breaks[i]+'_'+name_breaks[i+1] for i in range(n_breaks-1)]
             cut_vec = pd.Series(pd.cut(vec, bins=cut_breaks, labels=labs))
             cts_levs.append(cut_vec)
             full_labs.append(labs)
@@ -283,7 +284,7 @@ def ldscore(args, log):
 
     if args.ld_wind_snps:
         max_dist = args.ld_wind_snps
-        coords = np.array(xrange(geno_array.m))
+        coords = np.array(range(geno_array.m))
     elif args.ld_wind_kb:
         max_dist = args.ld_wind_kb*1000
         coords = np.array(array_snps.df['BP'])[geno_array.kept_snps]
@@ -647,9 +648,9 @@ if __name__ == '__main__':
 
             # bad flags
         else:
-            print header
-            print 'Error: no analysis selected.'
-            print 'ldsc.py -h describes options.'
+            print(header)
+            print('Error: no analysis selected.')
+            print('ldsc.py -h describes options.')
     except Exception:
         ex_type, ex, tb = sys.exc_info()
         log.log( traceback.format_exc(ex) )

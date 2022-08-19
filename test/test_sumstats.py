@@ -26,7 +26,7 @@ class Mock(object):
 
     def log(self, x):
         # pass
-        print x
+        print(x)
 
 log = Mock()
 args = Mock()
@@ -65,7 +65,7 @@ def test_align_alleles():
 def test_filter_bad_alleles():
     alleles = pd.Series(['ATAT', 'ATAG', 'DIID', 'ACAC'])
     bad_alleles = s._filter_alleles(alleles)
-    print bad_alleles
+    print(bad_alleles)
     assert_series_equal(bad_alleles, pd.Series([False, False, False, True]))
 
 

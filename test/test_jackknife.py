@@ -194,7 +194,7 @@ class Test_LsqtsqJackknifeFast(unittest.TestCase):
     def test_eq_slow(self):
         x = np.atleast_2d(np.random.normal(size=(100, 2)))
         y = np.atleast_2d(np.random.normal(size=(100, 1)))
-        print x.shape
+        print(x.shape)
         for n_blocks in xrange(2, 49):
             b1 = jk.LstsqJackknifeFast(x, y, n_blocks=n_blocks).est
             b2 = jk.LstsqJackknifeSlow(x, y, n_blocks=n_blocks).est
