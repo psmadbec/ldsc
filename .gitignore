@@ -94,3 +94,7 @@ docs/_build/
 # tests
 test/simulate_test/sumstats/*
 test/simulate_test/ldscore/*
+
+# scratch
+scratch/*
+!scratch/scripts
