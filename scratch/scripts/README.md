@@ -3,6 +3,10 @@
 2) Download G1000 EUR Dataset from https://alkesgroup.broadinstitute.org/LDSCORE/1000G_Phase3_plinkfiles.tgz and extract to `g1000_plink_eur` directory
 3) `./convert_all_baseline_to_snps.sh`
 4) `python make_w_hm3.py`
+NOTE: We should use the w_hm3.snplist from here:
+   wget https://data.broadinstitute.org/alkesgroup/LDSCORE/w_hm3.snplist.bz2
+   bunzip2 w_hm3.snplist.bz2
+This would negate the need for steps 3 and 4 above
 5) `./download_and_created_bed.sh [fname]`
 6) `./make_all_annot_l2.sh [fname]`
 7) `./fetch_ancestry_file.sh [phenotype]`

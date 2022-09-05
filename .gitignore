@@ -97,4 +97,6 @@ test/simulate_test/ldscore/*
 
 # scratch
 scratch/*
-!scratch/scripts
+!scratch/scripts/
+correlation_scratch/*
+!correlation_scratch/scripts/
