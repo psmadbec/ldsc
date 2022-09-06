@@ -445,13 +445,14 @@ def _read_other_sumstats(args, log, p2, sumstats, ref_ld_cnames):
 def _get_rg_table(rg_paths, RG, args):
     '''Print a table of genetic correlations.'''
     t = lambda attr: lambda obj: getattr(obj, attr, 'NA')
+    convert = lambda m: [None if a == 'NA' else a for a in m]
     x = pd.DataFrame()
     x['p1'] = [rg_paths[0] for i in range(1, len(rg_paths))]
     x['p2'] = rg_paths[1:len(rg_paths)]
-    x['rg'] = list(map(t('rg_ratio'), RG))
-    x['se'] = list(map(t('rg_se'), RG))
-    x['z'] = list(map(t('z'), RG))
-    x['p'] = list(map(t('p'), RG))
+    x['rg'] = convert(map(t('rg_ratio'), RG))
+    x['se'] = convert(map(t('rg_se'), RG))
+    x['z'] = convert(map(t('z'), RG))
+    x['p'] = convert(map(t('p'), RG))
     if args.samp_prev is not None and \
             args.pop_prev is not None and \
             all((i is not None for i in args.samp_prev)) and \
