@@ -89,7 +89,8 @@ studies = """""".strip().split('\n')
 # Human_Enhancer_Villar_Species_Enhancer_Count
 # Nucleotide_Diversity_10kb
 # Backgrd_Selection_Stat
-# Recomb_Rate_10kb""".strip().split('\n')
+# Recomb_Rate_10kb
+# CpG_Content_50kb""".strip().split('\n')
 
 
 def get_new_study(study, CHR):
