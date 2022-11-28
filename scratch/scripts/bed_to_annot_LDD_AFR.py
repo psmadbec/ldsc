@@ -1,13 +1,16 @@
 import gzip
 from scipy.stats import norm
+import numpy as np
 
 
-def get_ASMC_dict():
+def get_ldscores():
     out = {}
-    with open('../baselineLD_bed/ASMC_avg.180813.bed', 'r') as f:
-        for line in f.readlines():
-            split_line = [a.strip() for a in line.split('\t')]
-            out[(int(split_line[0]), int(split_line[2]))] = float(split_line[3])
+    for CHR in range(1, 23):
+        with gzip.open(f'../afr_ldscore/chr{CHR}.l2.ldscore.gz', 'r') as f:
+            _ = f.readline()  # useless header row
+            for line in f.readlines():
+                split_line = [a.strip() for a in line.decode().split('\t')]
+                out[(int(split_line[0]), int(split_line[2]))] = float(split_line[3])
     return out
 
 
@@ -31,38 +34,41 @@ def maf_bin(bin_num):
             out.append(varId)
     return out
 
-# NOTE: This is a bit odd, but unlike normal quantilization they seem to have split overlapping values and just assigned
-# them in sorted chr:pos order. This is wrong, but I'm leaving it for now as a check.
-# c is an adjustment to rank, BLOM dictates 3/8, but since no value actually works I'm leaving it 0 for now
 c = 0
 
-def get_var_dict(bin, ASMC):
-    maf_vars = maf_bin_2(bin)
-    ASMC_to_var_ids = {}
+def get_var_dict(bin, ldscores):
+    maf_vars = maf_bin(bin)
+    ldscore_dict = {}
     for varId in maf_vars:
-        if varId in ASMC:
-            asmc = ASMC[varId]
-            if asmc not in ASMC_to_var_ids:
-                ASMC_to_var_ids[asmc] = []
-            ASMC_to_var_ids[asmc].append(varId)
-    total = sum([len(v) for k, v in ASMC_to_var_ids.items()])
+        ldscore = ldscores.get(varId, 1.0)
+        if varId not in ldscores:
+            print(varId)
+        if ldscore not in ldscore_dict:
+            ldscore_dict[ldscore] = []
+        ldscore_dict[ldscore].append(varId)
+    total = sum([len(v) for k, v in ldscore_dict.items()])
 
     var_dict = {}
-    sorted_asmc = sorted(ASMC_to_var_ids)
+    sorted_ldscores = sorted(ldscore_dict)
     variants_less = 0
-    for asmc in sorted_asmc:
-        varIds = ASMC_to_var_ids[asmc]
+    for ldscore in sorted_ldscores:
+        varIds = ldscore_dict[ldscore]
         ranks = [variants_less + 1 + i for i in range(len(varIds))]
-        maf_asmc = [norm.ppf((r - c + 1) / (total - 2 * c + 1)) for r in ranks]
+        rank_to_use = ranks[len(ranks) // 2] - 0.5 * (len(ranks) % 2 == 0)
+        maf_ldscore = norm.ppf((rank_to_use - c) / (total - 2 * c + 1))
         variants_less += len(varIds)
-        for i, varId in enumerate(sorted(varIds)):
-            var_dict[varId] = maf_asmc[i]
+        for varId in varIds:
+            var_dict[varId] = maf_ldscore
+        if len(varIds) == 2:
+            for varId in varIds:
+                print(varId, var_dict[varId])
+            print(xxx)
     return var_dict
 
 
 def make_annot_files(CHR, var_dict):
     print(f'Writing Chromosome {CHR}')
-    with gzip.open(f'../baseline_annot/MAF_Adj_ASMC.{CHR}.annot.gz', 'w') as f_out:
+    with gzip.open(f'../baseline_annot/MAF_Adj_LLD_AFR.{CHR}.annot.gz', 'w') as f_out:
         f_out.write(b'ANNOT\n')
         with open(f'../g1000_plink_eur/1000G.EUR.QC.{CHR}.bim', 'r') as f_in:
             for line in f_in.readlines():
@@ -72,10 +78,11 @@ def make_annot_files(CHR, var_dict):
 
 
 def main():
-    asmc_dict = get_ASMC_dict()
+    ldscores = get_ldscores()
     var_dict = {}
+    get_var_dict(2, ldscores)
     for bin in range(1, 11):
-        var_dict.update(get_var_dict(bin, asmc_dict))
+        var_dict.update(get_var_dict(bin, ldscores))
     for CHR in range(1, 23):
         make_annot_files(CHR, var_dict)
 

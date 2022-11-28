@@ -1,6 +1,8 @@
 import gzip
 
-studies = """""".strip().split('\n')
+studies = """
+MAF_Adj_ASMC
+""".strip().split('\n')
 
 # studies = """Coding_UCSC
 # Coding_UCSC.flanking.500
@@ -90,7 +92,8 @@ studies = """""".strip().split('\n')
 # Nucleotide_Diversity_10kb
 # Backgrd_Selection_Stat
 # Recomb_Rate_10kb
-# CpG_Content_50kb""".strip().split('\n')
+# CpG_Content_50kb
+# MAF_Adj_Predicted_Allele_Age""".strip().split('\n')
 
 
 def get_new_study(study, CHR):
@@ -119,20 +122,31 @@ def get_debug(CHR):
 def compare_outputs():
     print(len(studies))
     for study in studies:
-        for CHR in range(1, 23):
+        for CHR in range(1, 2):
             num_bad = 0
+            num_total = 0
             num_bad_float = []
             old_study = get_old_study(study, CHR)
             new_study = get_new_study(study, CHR)
+            test = list(zip(map(float, old_study), map(float, new_study)))
+            test.sort()
+            import matplotlib.pyplot as plt
+            min_x = min([a[0] for a in test])
+            max_x = max([a[0] for a in test])
+            min_y = min([a[1] for a in test])
+            max_y = max([a[1] for a in test])
+            plt.plot([a[0] for a in test], [a[1] for a in test], '.')
+            #plt.plot([min_x, max_x], [min_y, max_y], '--')
+            plt.show()
             for i, (old_line, new_line) in enumerate(zip(old_study, new_study)):
                 if abs(float(old_line) - float(new_line)) != 0:
                     num_bad += 1
-                if abs(float(old_line) - float(new_line)) > 1E-4:
+                if abs(float(old_line) - float(new_line)) > 1.0:
                     num_bad_float.append(i)
                     print(i + 1, old_line, new_line)
-                    print(xxx)
+                num_total += 1
             if num_bad != 0:
-                print(f"Warning! CHR {CHR} {num_bad} lines do not match in {study} ({len(num_bad_float)} floats)")
+                print(f"Warning! CHR {CHR} {num_bad} lines do not match in {study} ({len(num_bad_float)} floats), total {num_total}")
             else:
                 print(f"{study} {CHR} Good!")
 
