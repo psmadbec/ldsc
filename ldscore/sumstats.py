@@ -352,24 +352,38 @@ def estimate_h2(args, log):
     if args.two_step is not None:
         log.log('Using two-step estimator with cutoff at {M}.'.format(M=args.two_step))
 
-    hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
-                     M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
-                     twostep=args.two_step, old_weights=old_weights)
+    if args.h2_split_annot:
+        split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
+        baseline_file, annot_files = split_files[0], split_files[1:]
+        log.log(f'Assuming {baseline_file} is baseline with {len(annot_files)} annot files (e.g. {annot_files[0]})')
+        baseline_width = ref_ld.shape[1] - len(annot_files)
+        baseline_idxs = list(range(baseline_width))
+        h2_split = [(f'{args.out}.{ps.base_name(annot)}', baseline_idxs + [baseline_width + idx]) for idx, annot in enumerate(annot_files)]
+    else:
+        h2_split = [(args.out, list(range(ref_ld.shape[1])))]
 
-    if args.print_cov:
-        _print_cov(hsqhat, args.out + '.cov', log)
-    if args.print_delete_vals:
-        _print_delete_values(hsqhat, args.out + '.delete', log)
-        _print_part_delete_values(hsqhat, args.out + '.part_delete', log)
-
-    log.log(hsqhat.summary(ref_ld_cnames, P=args.samp_prev, K=args.pop_prev, overlap = args.overlap_annot))
     if args.overlap_annot:
-        overlap_matrix, M_tot = _read_annot(args, log)
+        full_overlap_matrix, M_tot = _read_annot(args, log)
 
-        # overlap_matrix = overlap_matrix[np.array(~novar_cols), np.array(~novar_cols)]#np.logical_not
-        df_results = hsqhat._overlap_output(ref_ld_cnames, overlap_matrix, M_annot, M_tot, args.print_coefficients)
-        df_results.to_csv(args.out+'.results', sep="\t", index=False)
-        log.log('Results printed to '+args.out+'.results')
+    for file_out, split_idxs in h2_split:
+        hsqhat = reg.Hsq(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]), s(sumstats.N),
+                         M_annot[:, split_idxs], n_blocks=n_blocks, intercept=args.intercept_h2,
+                         twostep=args.two_step, old_weights=old_weights)
+
+        if args.print_cov:
+            _print_cov(hsqhat, file_out + '.cov', log)
+        if args.print_delete_vals:
+            _print_delete_values(hsqhat, file_out + '.delete', log)
+            _print_part_delete_values(hsqhat, file_out + '.part_delete', log)
+
+        log.log(hsqhat.summary(ref_ld_cnames, P=args.samp_prev, K=args.pop_prev, overlap = args.overlap_annot))
+        if args.overlap_annot:
+            overlap_matrix = full_overlap_matrix[split_idxs, :][:, split_idxs]
+
+            # overlap_matrix = overlap_matrix[np.array(~novar_cols), np.array(~novar_cols)]#np.logical_not
+            df_results = hsqhat._overlap_output(ref_ld_cnames[split_idxs], overlap_matrix, M_annot[:, split_idxs], M_tot, args.print_coefficients)
+            df_results.to_csv(file_out+'.results', sep="\t", index=False)
+            log.log('Results printed to '+file_out+'.results')
 
     return hsqhat
 

@@ -510,6 +510,10 @@ parser.add_argument('--ref-ld-chr', default=None, type=str,
     'numbers to the end of the filename prefix.'
     'Example 1: --ref-ld-chr ld/ will read ld/1.l2.ldscore.gz ... ld/22.l2.ldscore.gz'
     'Example 2: --ref-ld-chr ld/@_kg will read ld/1_kg.l2.ldscore.gz ... ld/22_kg.l2.ldscore.gz')
+parser.add_argument('--h2-split-annot', default=False, action='store_true',
+    help='Indicates that ref_ld_chr or ref_ld has a baseline model (first file) and '
+         'subsequent annot files which should be run sequentially and saved as a series '
+         'of numbered files. E.g. --ref-ld-chr baseline,annot_1,annot_2 --h2-split-annot')
 parser.add_argument('--w-ld', default=None, type=str,
     help='Filename prefix for file with LD Scores with sum r^2 taken over SNPs included '
     'in the regression. LDSC will automatically append .l2.ldscore/.l2.ldscore.gz.')
@@ -626,6 +630,10 @@ if __name__ == '__main__':
                 raise ValueError('Cannot set both --h2 and --rg.')
             if args.ref_ld and args.ref_ld_chr:
                 raise ValueError('Cannot set both --ref-ld and --ref-ld-chr.')
+            if (args.ref_ld_chr is not None) and args.h2_split_annot is None:
+                raise ValueError('--h2-split-annot must be set with --ref-ld-chr')
+            if (args.h2 is not None) and args.h2_split_annot is None:
+                raise ValueError('--h2-split-annot can only be used with --h2')
             if args.w_ld and args.w_ld_chr:
                 raise ValueError('Cannot set both --w-ld and --w-ld-chr.')
             if (args.samp_prev is not None) != (args.pop_prev is not None):

@@ -28,6 +28,10 @@ def sub_chr(s, chrom):
     return s.replace('@', str(chrom))
 
 
+def base_name(s):
+    return os.path.splitext(os.path.basename(s))[0]
+
+
 def get_present_chrs(fh, num):
     '''Checks which chromosomes exist, assuming that the file base will be appended by a dot in any suffix.'''
     chrs = []
