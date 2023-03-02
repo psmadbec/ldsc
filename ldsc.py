@@ -514,6 +514,8 @@ parser.add_argument('--h2-split-annot', default=False, action='store_true',
     help='Indicates that ref_ld_chr or ref_ld has a baseline model (first file) and '
          'subsequent annot files which should be run sequentially and saved as a series '
          'of numbered files. E.g. --ref-ld-chr baseline,annot_1,annot_2 --h2-split-annot')
+parser.add_argument('--h2-threads', default=1, type=int,
+                    help='Number of threads for importing annot files in h2 mode')
 parser.add_argument('--w-ld', default=None, type=str,
     help='Filename prefix for file with LD Scores with sum r^2 taken over SNPs included '
     'in the regression. LDSC will automatically append .l2.ldscore/.l2.ldscore.gz.')
@@ -634,6 +636,8 @@ if __name__ == '__main__':
                 raise ValueError('--h2-split-annot must be set with --ref-ld-chr')
             if (args.h2 is not None) and args.h2_split_annot is None:
                 raise ValueError('--h2-split-annot can only be used with --h2')
+            if (args.h2 is not None) and args.h2_threads is None:
+                raise ValueError('--h2-threads can only be used with --h2')
             if args.w_ld and args.w_ld_chr:
                 raise ValueError('Cannot set both --w-ld and --w-ld-chr.')
             if (args.samp_prev is not None) != (args.pop_prev is not None):

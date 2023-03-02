@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import os
 import glob
+from multiprocessing import Pool
 
 
 def series_eq(x, y):
@@ -103,6 +104,7 @@ def ldscore_fromlist(flist, num=None):
     '''Sideways concatenation of a list of LD Score files.'''
     ldscore_array = []
     for i, fh in enumerate(flist):
+        print(f'Parsing {fh}')
         y = ldscore(fh, num)
         if i > 0:
             if not series_eq(y.SNP, ldscore_array[0].SNP):
@@ -125,8 +127,10 @@ def l2_parser(fh, compression):
     return x
 
 
-def annot_parser(fh, compression, frqfile_full=None, compression_frq=None):
+def annot_parser(annot_args):
     '''Parse annot files'''
+    fh, compression, frqfile_full, compression_frq = annot_args
+    print(f'Parsing {fh}')
     df_annot = read_csv(fh, header=0, compression=compression)\
         .drop(['SNP', 'CHR', 'BP', 'CM'], axis=1, errors='ignore')\
         .astype(float)
@@ -182,7 +186,8 @@ def M_fromlist(flist, num=None, N=2, common=False):
     return np.hstack([M(fh, num, N, common) for fh in flist])
 
 
-def annot(fh_list, num=None, frqfile=None):
+# Added multithread support
+def annot(fh_list, num=None, frqfile=None, threads=1):
     '''
     Parses .annot files and returns an overlap matrix. See docs/file_formats_ld.txt.
     If num is not None, parses .annot files split across [num] chromosomes (e.g., the
@@ -194,6 +199,7 @@ def annot(fh_list, num=None, frqfile=None):
     if num is not None:  # 22 files, one for each chromosome
         chrs = get_present_chrs(fh_list[0], num+1)
         for i, fh in enumerate(fh_list):
+            print(f'Parsing {fh}')
             first_fh = sub_chr(fh, chrs[0]) + annot_suffix[i]
             annot_s, annot_comp_single = which_compression(first_fh)
             annot_suffix[i] += annot_s
@@ -209,12 +215,17 @@ def annot(fh_list, num=None, frqfile=None):
         M_tot = 0
         for chrom in chrs:
             if frqfile is not None:
-                df_annot_chr_list = [annot_parser(sub_chr(fh, chrom) + annot_suffix[i], annot_compression[i],
-                                                  sub_chr(frqfile, chrom) + frq_suffix, frq_compression)
-                                     for i, fh in enumerate(fh_list)]
+                annot_inputs = [
+                    (sub_chr(fh, chrom) + annot_suffix[i], annot_compression[i], sub_chr(frqfile, chrom) + frq_suffix, frq_compression)
+                    for i, fh in enumerate(fh_list)
+                ]
             else:
-                df_annot_chr_list = [annot_parser(sub_chr(fh, chrom) + annot_suffix[i], annot_compression[i])
-                                     for i, fh in enumerate(fh_list)]
+                annot_inputs = [
+                    (sub_chr(fh, chrom) + annot_suffix[i], annot_compression[i], None, None)
+                    for i, fh in enumerate(fh_list)
+                ]
+            with Pool(threads) as p:
+                df_annot_chr_list = p.map(annot_parser, annot_inputs)
 
             annot_matrix_chr_list = [np.matrix(df_annot_chr) for df_annot_chr in df_annot_chr_list]
             annot_matrix_chr = np.hstack(annot_matrix_chr_list)
@@ -233,12 +244,14 @@ def annot(fh_list, num=None, frqfile=None):
             frq_s, frq_compression = which_compression(frqfile + frq_suffix)
             frq_suffix += frq_s
 
-            df_annot_list = [annot_parser(fh + annot_suffix[i], annot_compression[i],
-                                          frqfile + frq_suffix, frq_compression) for i, fh in enumerate(fh_list)]
+            annot_inputs = [(fh + annot_suffix[i], annot_compression[i], frqfile + frq_suffix, frq_compression)
+                            for i, fh in enumerate(fh_list)]
 
         else:
-            df_annot_list = [annot_parser(fh + annot_suffix[i], annot_compression[i])
-                             for i, fh in enumerate(fh_list)]
+            annot_inputs = [(fh + annot_suffix[i], annot_compression[i], None, None)
+                            for i, fh in enumerate(fh_list)]
+        with Pool(threads) as p:
+            df_annot_list = p.map(annot_parser, annot_inputs)
 
         annot_matrix_list = [np.matrix(y) for y in df_annot_list]
         annot_matrix = np.hstack(annot_matrix_list)
