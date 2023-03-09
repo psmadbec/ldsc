@@ -424,12 +424,15 @@ class Hsq(LD_Score_Regression):
             'Enrichment_p':diff_p,
             'Coefficient': one_d_convert(self.coef),
             'Coefficient_std_error': self.coef_se,
-            'Coefficient_z-score': one_d_convert(self.coef) / one_d_convert(self.coef_se)
+            'Coefficient_z-score': one_d_convert(self.coef) / one_d_convert(self.coef_se),
+            'Diff': one_d_convert(diff_est),
+            'Diff_std_error': one_d_convert(diff_se)
         })
         if print_coefficients:
             df = df[['Category', 'Prop._SNPs', 'Prop._h2', 'Prop._h2_std_error',
-                    'Enrichment','Enrichment_std_error', 'Enrichment_p',
-                     'Coefficient', 'Coefficient_std_error','Coefficient_z-score']]
+                     'Enrichment','Enrichment_std_error', 'Enrichment_p',
+                     'Coefficient', 'Coefficient_std_error','Coefficient_z-score',
+                     'Diff', 'Diff_std_error']]
         else:
             df = df[['Category', 'Prop._SNPs', 'Prop._h2', 'Prop._h2_std_error',
                     'Enrichment','Enrichment_std_error', 'Enrichment_p']]
