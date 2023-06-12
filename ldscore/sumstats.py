@@ -373,27 +373,34 @@ def estimate_h2(args, log):
         if args.two_step is not None:
             log.log('Using two-step estimator with cutoff at {M}.'.format(M=args.two_step))
 
-        split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
-        baseline_file, annot_files = split_files[0], split_files[1:]
-        baseline_width = ref_ld.shape[1] - len(annot_files)
-        baseline_idxs = list(range(baseline_width))
         if args.h2_split_annot:
+            split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
+            baseline_file, annot_files = split_files[0], split_files[1:]
+            baseline_width = ref_ld.shape[1] - len(annot_files)
+            baseline_idxs = list(range(baseline_width))
             log.log(f'Assuming {baseline_file} is baseline with {len(annot_files)} annot files (e.g. {annot_files[0]})')
             h2_split = [(f'{out}.{ps.base_name(annot)}', baseline_idxs + [baseline_width + idx]) for idx, annot in enumerate(annot_files)]
         else:
+            baseline_width = ref_ld.shape[1]
+            baseline_idxs = list(range(baseline_width))
             h2_split = [(out, list(range(ref_ld.shape[1])))]
+
 
         baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, baseline_idxs], s(sumstats[w_ld_cname]),
                                        s(sumstats.N), M_annot[:, baseline_idxs], args.intercept_h2)
-        full_hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
-                         M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
-                         twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
-        xty, xtx = full_hsqhat.jknife.xty, full_hsqhat.jknife.xtx
+        if args.xtx_override:
+            full_hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
+                             M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
+                             twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
+            xty, xtx = full_hsqhat.jknife.xty, full_hsqhat.jknife.xtx
 
         for file_out, split_idxs in h2_split:
-            override_split_idxs = split_idxs if args.intercept_h2 is not None else split_idxs + [xty.shape[1] - 1]
-            xty_override = xty[:, override_split_idxs]
-            xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
+            if args.xtx_override:
+                override_split_idxs = split_idxs if args.intercept_h2 is not None else split_idxs + [xty.shape[1] - 1]
+                xty_override = xty[:, override_split_idxs]
+                xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
+            else:
+                xty_override, xtx_override = None, None
             hsqhat = reg.Hsq(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]), s(sumstats.N),
                              M_annot[:, split_idxs], n_blocks=n_blocks, intercept=args.intercept_h2,
                              twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w,

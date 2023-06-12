@@ -642,9 +642,10 @@ class Gencov(LD_Score_Regression):
         return self.weights(ld, w_ld, N1, N2, np.sum(M), self.hsq1, self.hsq2, rho_g,
                          intercept, self.intercept_hsq1, self.intercept_hsq2, ii)
 
-    def aggregate(self, y, x, N, M, intercept=None):
+    @classmethod
+    def aggregate(cls, y, x, N, M, intercept=None):
         if intercept is None:
-            intercept = self.__null_intercept__
+            intercept = cls.__null_intercept__
 
         num = M * (np.mean(y) - intercept)
         denom = np.mean(np.multiply(x, N))
