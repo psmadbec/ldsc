@@ -385,10 +385,9 @@ def estimate_h2(args, log):
             baseline_idxs = list(range(baseline_width))
             h2_split = [(out, list(range(ref_ld.shape[1])))]
 
-
-        baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, baseline_idxs], s(sumstats[w_ld_cname]),
-                                       s(sumstats.N), M_annot[:, baseline_idxs], args.intercept_h2)
         if args.xtx_override:
+            baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, baseline_idxs], s(sumstats[w_ld_cname]),
+                                           s(sumstats.N), M_annot[:, baseline_idxs], args.intercept_h2)
             full_hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
                              M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
                              twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
@@ -401,6 +400,8 @@ def estimate_h2(args, log):
                 xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
             else:
                 xty_override, xtx_override = None, None
+                baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]),
+                                               s(sumstats.N), M_annot[:, split_idxs], args.intercept_h2)
             hsqhat = reg.Hsq(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]), s(sumstats.N),
                              M_annot[:, split_idxs], n_blocks=n_blocks, intercept=args.intercept_h2,
                              twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w,
