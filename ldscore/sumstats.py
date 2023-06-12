@@ -157,19 +157,22 @@ def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc, **kwargs):
     return out
 
 
-def _read_sumstats(args, log, fh, alleles=False, dropna=False):
+def _read_sumstats(args, log, fh_list, alleles=False, dropna=False):
     '''Parse summary statistics.'''
-    log.log('Reading summary statistics from {S} ...'.format(S=fh))
-    sumstats = ps.sumstats(fh, alleles=alleles, dropna=dropna)
-    log_msg = 'Read summary statistics for {N} SNPs.'
-    log.log(log_msg.format(N=len(sumstats)))
-    m = len(sumstats)
-    sumstats = sumstats.drop_duplicates(subset='SNP')
-    if m > len(sumstats):
-        log.log(
-            'Dropped {M} SNPs with duplicated rs numbers.'.format(M=m - len(sumstats)))
+    all_sumstats = []
+    for fh in fh_list.split(','):
+        log.log('Reading summary statistics from {S} ...'.format(S=fh))
+        sumstats = ps.sumstats(fh, alleles=alleles, dropna=dropna)
+        log_msg = 'Read summary statistics for {N} SNPs.'
+        log.log(log_msg.format(N=len(sumstats)))
+        m = len(sumstats)
+        sumstats = sumstats.drop_duplicates(subset='SNP')
+        if m > len(sumstats):
+            log.log(
+                'Dropped {M} SNPs with duplicated rs numbers.'.format(M=m - len(sumstats)))
+        all_sumstats.append(sumstats)
 
-    return sumstats
+    return all_sumstats
 
 
 def _check_ld_condnum(args, log, ref_ld):
@@ -238,8 +241,22 @@ def _merge_and_log(ld, sumstats, noun, log):
     return sumstats
 
 
+def _read_multi_ld_sumstats(args, log, fh_list, alleles=False, dropna=True):
+    all_sumstats = _read_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna)
+    ref_ld = _read_ref_ld(args, log)
+    n_annot = len(ref_ld.columns) - 1
+    M_annot = _read_M(args, log, n_annot)
+    M_annot, ref_ld, novar_cols = _check_variance(log, M_annot, ref_ld)
+    w_ld = _read_w_ld(args, log)
+    all_sumstats = [_merge_and_log(ref_ld, sumstats, 'reference panel LD', log) for sumstats in all_sumstats]
+    all_sumstats = [_merge_and_log(sumstats, w_ld, 'regression SNP LD', log) for sumstats in all_sumstats]
+    w_ld_cname = all_sumstats[0].columns[-1]
+    ref_ld_cnames = ref_ld.columns[1:len(ref_ld.columns)]
+    return M_annot, w_ld_cname, ref_ld_cnames, all_sumstats, novar_cols
+
+
 def _read_ld_sumstats(args, log, fh, alleles=False, dropna=True):
-    sumstats = _read_sumstats(args, log, fh, alleles=alleles, dropna=dropna)
+    sumstats = _read_sumstats(args, log, fh, alleles=alleles, dropna=dropna)[0]
     ref_ld = _read_ref_ld(args, log)
     n_annot = len(ref_ld.columns) - 1
     M_annot = _read_M(args, log, n_annot)
@@ -321,69 +338,81 @@ def estimate_h2(args, log):
         args.intercept_h2 = float(args.intercept_h2)
     if args.no_intercept:
         args.intercept_h2 = 1
-    M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols = _read_ld_sumstats(args, log, args.h2)
-    ref_ld = np.array(sumstats[ref_ld_cnames])
-    _check_ld_condnum(args, log, ref_ld_cnames)
-    _warn_length(log, sumstats)
-    n_snp = len(sumstats)
-    n_blocks = min(n_snp, args.n_blocks)
-    n_annot = len(ref_ld_cnames)
-    chisq_max = args.chisq_max
-    old_weights = False
-    if n_annot == 1:
-        if args.two_step is None and args.intercept_h2 is None:
-            args.two_step = 30
-    else:
-        old_weights = True
-        if args.chisq_max is None:
-            chisq_max = max(0.001*sumstats.N.max(), 80)
-
-    s = lambda x: np.array(x).reshape((n_snp, 1))
-    chisq = s(sumstats.Z**2)
-    if chisq_max is not None:
-        ii = np.ravel(chisq < chisq_max)
-        sumstats = sumstats.iloc[ii, :]
-        log.log('Removed {M} SNPs with chi^2 > {C} ({N} SNPs remain)'.format(
-                C=chisq_max, N=np.sum(ii), M=n_snp-np.sum(ii)))
-        n_snp = np.sum(ii)  # lambdas are late-binding, so this works
-        ref_ld = np.array(sumstats[ref_ld_cnames])
-        chisq = chisq[ii].reshape((n_snp, 1))
-
-    if args.two_step is not None:
-        log.log('Using two-step estimator with cutoff at {M}.'.format(M=args.two_step))
-
-    if args.h2_split_annot:
-        split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
-        baseline_file, annot_files = split_files[0], split_files[1:]
-        log.log(f'Assuming {baseline_file} is baseline with {len(annot_files)} annot files (e.g. {annot_files[0]})')
-        baseline_width = ref_ld.shape[1] - len(annot_files)
-        baseline_idxs = list(range(baseline_width))
-        h2_split = [(f'{args.out}.{ps.base_name(annot)}', baseline_idxs + [baseline_width + idx]) for idx, annot in enumerate(annot_files)]
-    else:
-        h2_split = [(args.out, list(range(ref_ld.shape[1])))]
-
+    M_annot, w_ld_cname, ref_ld_cnames, all_sumstats, novar_cols = _read_multi_ld_sumstats(args, log, args.h2)
     if args.overlap_annot:
         full_overlap_matrix, M_tot = _read_annot(args, log)
+    for sumstats, out in zip(all_sumstats, args.out.split(',')):
+        print(out)
+        ref_ld = np.array(all_sumstats[0][ref_ld_cnames])
+        _check_ld_condnum(args, log, ref_ld_cnames)
+        _warn_length(log, sumstats)
+        n_snp = len(sumstats)
+        n_blocks = min(n_snp, args.n_blocks)
+        n_annot = len(ref_ld_cnames)
+        chisq_max = args.chisq_max
+        old_weights = False
+        if n_annot == 1:
+            if args.two_step is None and args.intercept_h2 is None:
+                args.two_step = 30
+        else:
+            old_weights = True
+            if args.chisq_max is None:
+                chisq_max = max(0.001*sumstats.N.max(), 80)
 
-    for file_out, split_idxs in h2_split:
-        hsqhat = reg.Hsq(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]), s(sumstats.N),
-                         M_annot[:, split_idxs], n_blocks=n_blocks, intercept=args.intercept_h2,
-                         twostep=args.two_step, old_weights=old_weights)
+        s = lambda x: np.array(x).reshape((n_snp, 1))
+        chisq = s(sumstats.Z**2)
+        if chisq_max is not None:
+            ii = np.ravel(chisq < chisq_max)
+            sumstats = sumstats.iloc[ii, :]
+            log.log('Removed {M} SNPs with chi^2 > {C} ({N} SNPs remain)'.format(
+                    C=chisq_max, N=np.sum(ii), M=n_snp-np.sum(ii)))
+            n_snp = np.sum(ii)  # lambdas are late-binding, so this works
+            ref_ld = np.array(sumstats[ref_ld_cnames])
+            chisq = chisq[ii].reshape((n_snp, 1))
 
-        if args.print_cov:
-            _print_cov(hsqhat, file_out + '.cov', log)
-        if args.print_delete_vals:
-            _print_delete_values(hsqhat, file_out + '.delete', log)
-            _print_part_delete_values(hsqhat, file_out + '.part_delete', log)
+        if args.two_step is not None:
+            log.log('Using two-step estimator with cutoff at {M}.'.format(M=args.two_step))
 
-        log.log(hsqhat.summary(ref_ld_cnames, P=args.samp_prev, K=args.pop_prev, overlap = args.overlap_annot))
-        if args.overlap_annot:
-            overlap_matrix = full_overlap_matrix[split_idxs, :][:, split_idxs]
+        split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
+        baseline_file, annot_files = split_files[0], split_files[1:]
+        baseline_width = ref_ld.shape[1] - len(annot_files)
+        baseline_idxs = list(range(baseline_width))
+        if args.h2_split_annot:
+            log.log(f'Assuming {baseline_file} is baseline with {len(annot_files)} annot files (e.g. {annot_files[0]})')
+            h2_split = [(f'{out}.{ps.base_name(annot)}', baseline_idxs + [baseline_width + idx]) for idx, annot in enumerate(annot_files)]
+        else:
+            h2_split = [(out, list(range(ref_ld.shape[1])))]
 
-            # overlap_matrix = overlap_matrix[np.array(~novar_cols), np.array(~novar_cols)]#np.logical_not
-            df_results = hsqhat._overlap_output(ref_ld_cnames[split_idxs], overlap_matrix, M_annot[:, split_idxs], M_tot, args.print_coefficients)
-            df_results.to_csv(file_out+'.results', sep="\t", index=False)
-            log.log('Results printed to '+file_out+'.results')
+        baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, baseline_idxs], s(sumstats[w_ld_cname]),
+                                       s(sumstats.N), M_annot[:, baseline_idxs], args.intercept_h2)
+        full_hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
+                         M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
+                         twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
+        xty, xtx = full_hsqhat.jknife.xty, full_hsqhat.jknife.xtx
+
+        for file_out, split_idxs in h2_split:
+            override_split_idxs = split_idxs if args.intercept_h2 is not None else split_idxs + [xty.shape[1] - 1]
+            xty_override = xty[:, override_split_idxs]
+            xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
+            hsqhat = reg.Hsq(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]), s(sumstats.N),
+                             M_annot[:, split_idxs], n_blocks=n_blocks, intercept=args.intercept_h2,
+                             twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w,
+                             xty_override=xty_override, xtx_override=xtx_override)
+
+            if args.print_cov:
+                _print_cov(hsqhat, file_out + '.cov', log)
+            if args.print_delete_vals:
+                _print_delete_values(hsqhat, file_out + '.delete', log)
+                _print_part_delete_values(hsqhat, file_out + '.part_delete', log)
+
+            log.log(hsqhat.summary(ref_ld_cnames, P=args.samp_prev, K=args.pop_prev, overlap = args.overlap_annot))
+            if args.overlap_annot:
+                overlap_matrix = full_overlap_matrix[split_idxs, :][:, split_idxs]
+
+                # overlap_matrix = overlap_matrix[np.array(~novar_cols), np.array(~novar_cols)]#np.logical_not
+                df_results = hsqhat._overlap_output(ref_ld_cnames[split_idxs], overlap_matrix, M_annot[:, split_idxs], M_tot, args.print_coefficients)
+                df_results.to_csv(file_out+'.results', sep="\t", index=False)
+                log.log('Results printed to '+file_out+'.results')
 
     return hsqhat
 
@@ -441,7 +470,7 @@ def estimate_rg(args, log):
 
 
 def _read_other_sumstats(args, log, p2, sumstats, ref_ld_cnames):
-    loop = _read_sumstats(args, log, p2, alleles=True, dropna=False)
+    loop = _read_sumstats(args, log, p2, alleles=True, dropna=False)[0]
     loop = _merge_sumstats_sumstats(args, sumstats, loop, log)
     loop = loop.dropna(how='any')
     alleles = loop.A1 + loop.A2 + loop.A1x + loop.A2x

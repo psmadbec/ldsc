@@ -47,6 +47,72 @@ def _check_shape_block(xty_block_values, xtx_block_values):
     return xtx_block_values.shape[0:2]
 
 
+class JackknifeObject(object):
+
+    @classmethod
+    def jknife(cls, pseudovalues):
+        '''
+        Converts pseudovalues to jackknife estimate and variance.
+
+        Parameters
+        ----------
+        pseudovalues : np.matrix pf floats with shape (n_blocks, p)
+
+        Returns
+        -------
+        jknife_est : np.matrix with shape (1, p)
+            Jackknifed estimate.
+        jknife_var : np.matrix with shape (1, p)
+            Variance of jackknifed estimate.
+        jknife_se : np.matrix with shape (1, p)
+            Standard error of jackknifed estimate, equal to sqrt(jknife_var).
+        jknife_cov : np.matrix with shape (p, p)
+            Covariance matrix of jackknifed estimate.
+
+        '''
+        n_blocks = pseudovalues.shape[0]
+        jknife_cov = np.atleast_2d(np.cov(pseudovalues.T, ddof=1) / n_blocks)
+        jknife_var = np.atleast_2d(np.diag(jknife_cov))
+        jknife_se = np.atleast_2d(np.sqrt(jknife_var))
+        jknife_est = np.atleast_2d(np.mean(pseudovalues, axis=0))
+        return (jknife_est, jknife_var, jknife_se, jknife_cov)
+
+    @classmethod
+    def delete_values_to_pseudovalues(cls, delete_values, est):
+        '''
+        Converts whole-data estimate and delete values to pseudovalues.
+
+        Parameters
+        ----------
+        delete_values : np.matrix with shape (n_blocks, p)
+            Delete values.
+        est : np.matrix with shape (1, p):
+            Whole-data estimate.
+
+        Returns
+        -------
+        pseudovalues : np.matrix with shape (n_blocks, p)
+            Psuedovalues.
+
+        Raises
+        ------
+        ValueError :
+            If est.shape != (1, delete_values.shape[1])
+
+        '''
+        n_blocks, p = delete_values.shape
+        if est.shape != (1, p):
+            raise ValueError(
+                'Different number of parameters in delete_values than in est.')
+
+        return n_blocks * est - (n_blocks - 1) * delete_values
+
+    @classmethod
+    def get_separators(cls, N, n_blocks):
+        '''Define evenly-spaced block boundaries.'''
+        return np.floor(np.linspace(0, N, n_blocks + 1)).astype(int)
+
+
 class Jackknife(object):
 
     '''
@@ -259,57 +325,7 @@ class LstsqJackknifeSlow(Jackknife):
         return np.concatenate(d, axis=0)
 
 
-class LstsqJackknifeFast(Jackknife):
-
-    '''
-    Fast block jackknife for linear regression.
-
-    Inherits from Jackknife class.
-
-    Parameters
-    ----------
-    x : np.matrix with shape (n, p)
-        Independent variable.
-    y : np.matrix with shape (n, 1)
-        Dependent variable.
-    n_blocks : int
-        Number of jackknife blocks
-
-    Attributes
-    ----------
-    est : np.matrix with shape (1, p)
-        FWLS estimate.
-    jknife_est : np.matrix with shape (1, p)
-        Jackknifed estimate.
-    jknife_var : np.matrix with shape (1, p)
-        Variance of jackknifed estimate.
-    jknife_se : np.matrix with shape (1, p)
-        Standard error of jackknifed estimate, equal to sqrt(jknife_var).
-    jknife_cov : np.matrix with shape (p, p)
-        Covariance matrix of jackknifed estimate.
-    delete_vals : np.matrix with shape (n_blocks, p)
-        Jackknife delete values.
-
-    Methods
-    -------
-    block_values(x, y, n_blocks) :
-        Computes block values for the regression y~x.
-    block_values_to_est(block_values) :
-        Computes whole-data estimate from block values.
-    block_values_to_pseudovalues(block_values, est) :
-        Computes pseudovalues and delete values in a single pass over the block values.
-
-    '''
-
-    def __init__(self, x, y, n_blocks=None, separators=None):
-        Jackknife.__init__(self, x, y, n_blocks, separators)
-        xty, xtx = self.block_values(x, y, self.separators)
-        self.est = self.block_values_to_est(xty, xtx)
-        self.delete_values = self.block_values_to_delete_values(xty, xtx)
-        self.pseudovalues = self.delete_values_to_pseudovalues(
-            self.delete_values, self.est)
-        (self.jknife_est, self.jknife_var, self.jknife_se, self.jknife_cov) =\
-            self.jknife(self.pseudovalues)
+class LstsqJackknifeFastObject(object):
 
     @classmethod
     def block_values(cls, x, y, s):
@@ -422,6 +438,107 @@ class LstsqJackknifeFast(Jackknife):
                 delete_xtx, delete_xty).reshape((1, p))
 
         return delete_values
+
+class LstsqJackknifeFast(Jackknife, LstsqJackknifeFastObject):
+
+    '''
+    Fast block jackknife for linear regression.
+
+    Inherits from Jackknife class.
+
+    Parameters
+    ----------
+    x : np.matrix with shape (n, p)
+        Independent variable.
+    y : np.matrix with shape (n, 1)
+        Dependent variable.
+    n_blocks : int
+        Number of jackknife blocks
+
+    Attributes
+    ----------
+    est : np.matrix with shape (1, p)
+        FWLS estimate.
+    jknife_est : np.matrix with shape (1, p)
+        Jackknifed estimate.
+    jknife_var : np.matrix with shape (1, p)
+        Variance of jackknifed estimate.
+    jknife_se : np.matrix with shape (1, p)
+        Standard error of jackknifed estimate, equal to sqrt(jknife_var).
+    jknife_cov : np.matrix with shape (p, p)
+        Covariance matrix of jackknifed estimate.
+    delete_vals : np.matrix with shape (n_blocks, p)
+        Jackknife delete values.
+
+    Methods
+    -------
+    block_values(x, y, n_blocks) :
+        Computes block values for the regression y~x.
+    block_values_to_est(block_values) :
+        Computes whole-data estimate from block values.
+    block_values_to_pseudovalues(block_values, est) :
+        Computes pseudovalues and delete values in a single pass over the block values.
+
+    '''
+
+    def __init__(self, x, y, n_blocks=None, separators=None):
+        Jackknife.__init__(self, x, y, n_blocks, separators)
+
+        self.xty, self.xtx = self.block_values(x, y, self.separators)
+        self.est = self.block_values_to_est(self.xty, self.xtx)
+        self.delete_values = self.block_values_to_delete_values(self.xty, self.xtx)
+        self.pseudovalues = self.delete_values_to_pseudovalues(
+            self.delete_values, self.est)
+        (self.jknife_est, self.jknife_var, self.jknife_se, self.jknife_cov) = \
+            self.jknife(self.pseudovalues)
+
+
+class LstsqJackknifeFromXTX(JackknifeObject, LstsqJackknifeFastObject):
+    '''
+    Block jackknife for linear regression using XTX and XTY override.
+
+    Inherits from Jackknife class.
+
+    Parameters
+    ----------
+    xty : np.matrix with shape (n_blocks, p)
+        Dependent variable.
+    xtx : np.matrix with shape (n_blocks, p, p)
+        Independent variable.
+
+    Attributes
+    ----------
+    est : np.matrix with shape (1, p)
+        FWLS estimate.
+    jknife_est : np.matrix with shape (1, p)
+        Jackknifed estimate.
+    jknife_var : np.matrix with shape (1, p)
+        Variance of jackknifed estimate.
+    jknife_se : np.matrix with shape (1, p)
+        Standard error of jackknifed estimate, equal to sqrt(jknife_var).
+    jknife_cov : np.matrix with shape (p, p)
+        Covariance matrix of jackknifed estimate.
+    delete_vals : np.matrix with shape (n_blocks, p)
+        Jackknife delete values.
+
+    Methods
+    -------
+    block_values(x, y, n_blocks) :
+        Computes block values for the regression y~x.
+    block_values_to_est(block_values) :
+        Computes whole-data estimate from block values.
+    block_values_to_pseudovalues(block_values, est) :
+        Computes pseudovalues and delete values in a single pass over the block values.
+
+    '''
+
+    def __init__(self, xty, xtx):
+        self.est = self.block_values_to_est(xty, xtx)
+        self.delete_values = self.block_values_to_delete_values(xty, xtx)
+        self.pseudovalues = self.delete_values_to_pseudovalues(
+            self.delete_values, self.est)
+        (self.jknife_est, self.jknife_var, self.jknife_se, self.jknife_cov) = \
+            self.jknife(self.pseudovalues)
 
 
 class RatioJackknife(Jackknife):

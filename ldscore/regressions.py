@@ -139,7 +139,9 @@ def h2_obs_to_liab(h2_obs, P, K):
 
 class LD_Score_Regression(object):
 
-    def __init__(self, y, x, w, N, M, n_blocks, intercept=None, slow=False, step1_ii=None, old_weights=False):
+    def __init__(self, y, x, w, initial_w, N, M, n_blocks, 
+                 intercept=None, slow=False, step1_ii=None, old_weights=False,
+                 xty_override=None, xtx_override=None):
         for i in [y, x, w, M, N]:
             try:
                 if len(i.shape) != 2:
@@ -159,54 +161,55 @@ class LD_Score_Regression(object):
         self.constrain_intercept = intercept is not None
         self.intercept = intercept
         self.n_blocks = n_blocks
-        tot_agg = self.aggregate(y, x_tot, N, M_tot, intercept)
-        initial_w = self._update_weights(x_tot, w, N, M_tot, tot_agg, intercept)
         Nbar = np.mean(N)  # keep condition number low
-        x = np.multiply(N, x) / Nbar
-        if not self.constrain_intercept:
-            x, x_tot = append_intercept(x), append_intercept(x_tot)
-            yp = y
+        if xtx_override is None or xty_override is None:
+            x = np.multiply(N, x) / Nbar
+            if not self.constrain_intercept:
+                x, x_tot = append_intercept(x), append_intercept(x_tot)
+                yp = y
+            else:
+                yp = y - intercept
+                self.intercept_se = 'NA'
+            del y
+            self.twostep_filtered = None
+            if step1_ii is not None and self.constrain_intercept:
+                raise ValueError(
+                    'twostep is not compatible with constrain_intercept.')
+            elif step1_ii is not None and self.n_annot > 1:
+                raise ValueError(
+                    'twostep not compatible with partitioned LD Score yet.')
+            elif step1_ii is not None:
+                n1 = np.sum(step1_ii)
+                self.twostep_filtered = n_snp - n1
+                x1 = x[np.squeeze(step1_ii), :]
+                yp1, w1, N1, initial_w1 = list(map(lambda a: a[step1_ii].reshape((n1, 1)), (yp, w, N, initial_w)))
+                update_func1 = lambda a: self._update_func(
+                    a, x1, w1, N1, M_tot, Nbar, ii=step1_ii)
+                step1_jknife = IRWLS(
+                    x1, yp1, update_func1, n_blocks, slow=slow, w=initial_w1)
+                step1_int, _ = self._intercept(step1_jknife)
+                yp = yp - step1_int
+                x = remove_intercept(x)
+                x_tot = remove_intercept(x_tot)
+                update_func2 = lambda a: self._update_func(
+                    a, x_tot, w, N, M_tot, Nbar, step1_int)
+                s = update_separators(step1_jknife.separators, step1_ii)
+                step2_jknife = IRWLS(
+                    x, yp, update_func2, n_blocks, slow=slow, w=initial_w, separators=s)
+                c = np.sum(np.multiply(initial_w, x)) / \
+                    np.sum(np.multiply(initial_w, np.square(x)))
+                jknife = self._combine_twostep_jknives(
+                    step1_jknife, step2_jknife, M_tot, c, Nbar)
+            elif old_weights:
+                initial_w = np.sqrt(initial_w)
+                x = IRWLS._weight(x, initial_w)
+                y = IRWLS._weight(yp, initial_w)
+                jknife = jk.LstsqJackknifeFast(x, y, n_blocks)
+            else:
+                update_func = lambda a: self._update_func(a, x_tot, w, N, M_tot, Nbar, intercept)
+                jknife = IRWLS(x, yp, update_func, n_blocks, slow=slow, w=initial_w)
         else:
-            yp = y - intercept
-            self.intercept_se = 'NA'
-        del y
-        self.twostep_filtered = None
-        if step1_ii is not None and self.constrain_intercept:
-            raise ValueError(
-                'twostep is not compatible with constrain_intercept.')
-        elif step1_ii is not None and self.n_annot > 1:
-            raise ValueError(
-                'twostep not compatible with partitioned LD Score yet.')
-        elif step1_ii is not None:
-            n1 = np.sum(step1_ii)
-            self.twostep_filtered = n_snp - n1
-            x1 = x[np.squeeze(step1_ii), :]
-            yp1, w1, N1, initial_w1 = list(map(lambda a: a[step1_ii].reshape((n1, 1)), (yp, w, N, initial_w)))
-            update_func1 = lambda a: self._update_func(
-                a, x1, w1, N1, M_tot, Nbar, ii=step1_ii)
-            step1_jknife = IRWLS(
-                x1, yp1, update_func1, n_blocks, slow=slow, w=initial_w1)
-            step1_int, _ = self._intercept(step1_jknife)
-            yp = yp - step1_int
-            x = remove_intercept(x)
-            x_tot = remove_intercept(x_tot)
-            update_func2 = lambda a: self._update_func(
-                a, x_tot, w, N, M_tot, Nbar, step1_int)
-            s = update_separators(step1_jknife.separators, step1_ii)
-            step2_jknife = IRWLS(
-                x, yp, update_func2, n_blocks, slow=slow, w=initial_w, separators=s)
-            c = np.sum(np.multiply(initial_w, x)) / \
-                np.sum(np.multiply(initial_w, np.square(x)))
-            jknife = self._combine_twostep_jknives(
-                step1_jknife, step2_jknife, M_tot, c, Nbar)
-        elif old_weights:
-            initial_w = np.sqrt(initial_w)
-            x = IRWLS._weight(x, initial_w)
-            y = IRWLS._weight(yp, initial_w)
-            jknife = jk.LstsqJackknifeFast(x, y, n_blocks)
-        else:
-            update_func = lambda a: self._update_func(a, x_tot, w, N, M_tot, Nbar, intercept)
-            jknife = IRWLS(x, yp, update_func, n_blocks, slow=slow, w=initial_w)
+            jknife = jk.LstsqJackknifeFromXTX(xty_override, xtx_override)
 
         self.coef, self.coef_cov, self.coef_se = self._coef(jknife, Nbar)
         self.cat, self.cat_cov, self.cat_se =\
@@ -229,15 +232,6 @@ class LD_Score_Regression(object):
                 :, self.n_annot]
 
         self.M = M
-
-    @classmethod
-    def aggregate(cls, y, x, N, M, intercept=None):
-        if intercept is None:
-            intercept = cls.__null_intercept__
-
-        num = M * (np.mean(y) - intercept)
-        denom = np.mean(np.multiply(x, N))
-        return num / denom
 
     def _update_func(self, x, ref_ld_tot, w_ld, N, M, Nbar, intercept=None, ii=None):
         raise NotImplementedError
@@ -333,13 +327,18 @@ class Hsq(LD_Score_Regression):
 
     __null_intercept__ = 1
 
-    def __init__(self, y, x, w, N, M, n_blocks=200, intercept=None, slow=False, twostep=None, old_weights=False):
+    def __init__(self, y, x, w, N, M, n_blocks=200, 
+                 intercept=None, slow=False, twostep=None, old_weights=False, initial_w=None, 
+                 xty_override=None, xtx_override=None):
         step1_ii = None
         if twostep is not None:
             step1_ii = y < twostep
+        if initial_w is None:
+            initial_w = self.initial_w(y, x, w, N, M, intercept)
 
-        LD_Score_Regression.__init__(self, y, x, w, N, M, n_blocks, intercept=intercept,
-                                     slow=slow, step1_ii=step1_ii, old_weights=old_weights)
+        LD_Score_Regression.__init__(self, y, x, w, initial_w, N, M, n_blocks, intercept=intercept,
+                                     slow=slow, step1_ii=step1_ii, old_weights=old_weights,
+                                     xty_override=xty_override, xtx_override=xtx_override)
         self.mean_chisq, self.lambda_gc = self._summarize_chisq(y)
         if not self.constrain_intercept:
             self.ratio, self.ratio_se = self._ratio(self.intercept, self.intercept_se, self.mean_chisq)
@@ -486,11 +485,43 @@ class Hsq(LD_Score_Regression):
 
         return remove_brackets('\n'.join(out))
 
-    def _update_weights(self, ld, w_ld, N, M, hsq, intercept, ii=None):
+    @classmethod
+    def aggregate(cls, y, x, N, M, intercept=None):
         if intercept is None:
-            intercept = self.__null_intercept__
+            intercept = cls.__null_intercept__
 
-        return self.weights(ld, w_ld, N, M, hsq, intercept, ii)
+        num = M * (np.mean(y) - intercept)
+        denom = np.mean(np.multiply(x, N))
+        return num / denom
+
+
+    @classmethod
+    def initial_w(cls, y, x, w, N, M, intercept=None):
+        for i in [y, x, w, M, N]:
+            try:
+                if len(i.shape) != 2:
+                    raise TypeError('Arguments must be 2D arrays.')
+            except AttributeError:
+                raise TypeError('Arguments must be arrays.')
+
+        n_snp, n_annot = x.shape
+        if any(i.shape != (n_snp, 1) for i in [y, w, N]):
+            raise ValueError(
+                'N, weights and response (z1z2 or chisq) must have shape (n_snp, 1).')
+        if M.shape != (1, n_annot):
+            raise ValueError('M must have shape (1, n_annot).')
+
+        M_tot = float(np.sum(M))
+        x_tot = np.sum(x, axis=1).reshape((n_snp, 1))
+        tot_agg = cls.aggregate(y, x_tot, N, M_tot, intercept)
+        return cls._update_weights(x_tot, w, N, M_tot, tot_agg, intercept)
+
+    @classmethod
+    def _update_weights(cls, ld, w_ld, N, M, hsq, intercept, ii=None):
+        if intercept is None:
+            intercept = cls.__null_intercept__
+
+        return cls.weights(ld, w_ld, N, M, hsq, intercept, ii)
 
     @classmethod
     def weights(cls, ld, w_ld, N, M, hsq, intercept=None, ii=None):
@@ -549,7 +580,8 @@ class Gencov(LD_Score_Regression):
         if twostep is not None:
             step1_ii = np.logical_and(z1**2 < twostep, z2**2 < twostep)
 
-        LD_Score_Regression.__init__(self, y, x, w, np.sqrt(N1 * N2), M, n_blocks,
+        initial_w = self.initial_w(y, x, w, np.sqrt(N1 * N2), M, intercept_gencov)
+        LD_Score_Regression.__init__(self, y, x, w, initial_w, np.sqrt(N1 * N2), M, n_blocks,
                                      intercept=intercept_gencov, slow=slow, step1_ii=step1_ii)
         self.p, self.z = p_z_norm(self.tot, self.tot_se)
         self.mean_z1z2 = np.mean(np.multiply(z1, z2))
@@ -609,6 +641,34 @@ class Gencov(LD_Score_Regression):
 
         return self.weights(ld, w_ld, N1, N2, np.sum(M), self.hsq1, self.hsq2, rho_g,
                          intercept, self.intercept_hsq1, self.intercept_hsq2, ii)
+
+    def aggregate(self, y, x, N, M, intercept=None):
+        if intercept is None:
+            intercept = self.__null_intercept__
+
+        num = M * (np.mean(y) - intercept)
+        denom = np.mean(np.multiply(x, N))
+        return num / denom
+
+    def initial_w(self, y, x, w, N, M, intercept=None):
+        for i in [y, x, w, M, N]:
+            try:
+                if len(i.shape) != 2:
+                    raise TypeError('Arguments must be 2D arrays.')
+            except AttributeError:
+                raise TypeError('Arguments must be arrays.')
+
+        n_snp, n_annot = x.shape
+        if any(i.shape != (n_snp, 1) for i in [y, w, N]):
+            raise ValueError(
+                'N, weights and response (z1z2 or chisq) must have shape (n_snp, 1).')
+        if M.shape != (1, n_annot):
+            raise ValueError('M must have shape (1, n_annot).')
+
+        M_tot = float(np.sum(M))
+        x_tot = np.sum(x, axis=1).reshape((n_snp, 1))
+        tot_agg = self.aggregate(y, x_tot, N, M_tot, intercept)
+        return self._update_weights(x_tot, w, N, M_tot, tot_agg, intercept)
 
     def _update_weights(self, ld, w_ld, sqrt_n1n2, M, rho_g, intercept, ii=None):
         '''Weight function with the same signature for Hsq and Gencov.'''

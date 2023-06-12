@@ -592,7 +592,7 @@ if __name__ == '__main__':
     if args.out is None:
         raise ValueError('--out is required.')
 
-    log = Logger(args.out+'.log')
+    log = Logger('h2.log')
     try:
         defaults = vars(parser.parse_args(''))
         opts = vars(args)
