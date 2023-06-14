@@ -157,9 +157,8 @@ def _read_chr_split_files(chr_arg, not_chr_arg, log, noun, parsefunc, **kwargs):
     return out
 
 
-def _read_sumstats(args, log, fh_list, alleles=False, dropna=False):
+def _yield_sumstats(args, log, fh_list, alleles=False, dropna=False):
     '''Parse summary statistics.'''
-    all_sumstats = []
     for fh in fh_list.split(','):
         log.log('Reading summary statistics from {S} ...'.format(S=fh))
         sumstats = ps.sumstats(fh, alleles=alleles, dropna=dropna)
@@ -170,9 +169,22 @@ def _read_sumstats(args, log, fh_list, alleles=False, dropna=False):
         if m > len(sumstats):
             log.log(
                 'Dropped {M} SNPs with duplicated rs numbers.'.format(M=m - len(sumstats)))
-        all_sumstats.append(sumstats)
+        yield sumstats
 
-    return all_sumstats
+
+def _read_sumstats(args, log, fh, alleles=False, dropna=False):
+    '''Parse summary statistics.'''
+    log.log('Reading summary statistics from {S} ...'.format(S=fh))
+    sumstats = ps.sumstats(fh, alleles=alleles, dropna=dropna)
+    log_msg = 'Read summary statistics for {N} SNPs.'
+    log.log(log_msg.format(N=len(sumstats)))
+    m = len(sumstats)
+    sumstats = sumstats.drop_duplicates(subset='SNP')
+    if m > len(sumstats):
+        log.log(
+            'Dropped {M} SNPs with duplicated rs numbers.'.format(M=m - len(sumstats)))
+
+    return sumstats
 
 
 def _check_ld_condnum(args, log, ref_ld):
@@ -242,21 +254,21 @@ def _merge_and_log(ld, sumstats, noun, log):
 
 
 def _read_multi_ld_sumstats(args, log, fh_list, alleles=False, dropna=True):
-    all_sumstats = _read_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna)
     ref_ld = _read_ref_ld(args, log)
     n_annot = len(ref_ld.columns) - 1
     M_annot = _read_M(args, log, n_annot)
     M_annot, ref_ld, novar_cols = _check_variance(log, M_annot, ref_ld)
     w_ld = _read_w_ld(args, log)
-    all_sumstats = [_merge_and_log(ref_ld, sumstats, 'reference panel LD', log) for sumstats in all_sumstats]
-    all_sumstats = [_merge_and_log(sumstats, w_ld, 'regression SNP LD', log) for sumstats in all_sumstats]
-    w_ld_cname = all_sumstats[0].columns[-1]
-    ref_ld_cnames = ref_ld.columns[1:len(ref_ld.columns)]
-    return M_annot, w_ld_cname, ref_ld_cnames, all_sumstats, novar_cols
+    for sumstats in _yield_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna):
+        sumstats = _merge_and_log(ref_ld, sumstats, 'reference panel LD', log)
+        sumstats = _merge_and_log(sumstats, w_ld, 'regression SNP LD', log)
+        w_ld_cname = sumstats.columns[-1]
+        ref_ld_cnames = ref_ld.columns[1:len(ref_ld.columns)]
+        yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols
 
 
 def _read_ld_sumstats(args, log, fh, alleles=False, dropna=True):
-    sumstats = _read_sumstats(args, log, fh, alleles=alleles, dropna=dropna)[0]
+    sumstats = _read_sumstats(args, log, fh, alleles=alleles, dropna=dropna)
     ref_ld = _read_ref_ld(args, log)
     n_annot = len(ref_ld.columns) - 1
     M_annot = _read_M(args, log, n_annot)
@@ -338,12 +350,12 @@ def estimate_h2(args, log):
         args.intercept_h2 = float(args.intercept_h2)
     if args.no_intercept:
         args.intercept_h2 = 1
-    M_annot, w_ld_cname, ref_ld_cnames, all_sumstats, novar_cols = _read_multi_ld_sumstats(args, log, args.h2)
     if args.overlap_annot:
         full_overlap_matrix, M_tot = _read_annot(args, log)
-    for sumstats, out in zip(all_sumstats, args.out.split(',')):
+    for sumstats_out, out in zip(_read_multi_ld_sumstats(args, log, args.h2), args.out.split(',')):
+        M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols = sumstats_out
         print(out)
-        ref_ld = np.array(all_sumstats[0][ref_ld_cnames])
+        ref_ld = np.array(sumstats[ref_ld_cnames])
         _check_ld_condnum(args, log, ref_ld_cnames)
         _warn_length(log, sumstats)
         n_snp = len(sumstats)
@@ -478,7 +490,7 @@ def estimate_rg(args, log):
 
 
 def _read_other_sumstats(args, log, p2, sumstats, ref_ld_cnames):
-    loop = _read_sumstats(args, log, p2, alleles=True, dropna=False)[0]
+    loop = _read_sumstats(args, log, p2, alleles=True, dropna=False)
     loop = _merge_sumstats_sumstats(args, sumstats, loop, log)
     loop = loop.dropna(how='any')
     alleles = loop.A1 + loop.A2 + loop.A1x + loop.A2x
