@@ -85,6 +85,14 @@ def _read_ref_ld(args, log):
     return ref_ld
 
 
+def _read_split_ref_ld(ref_ld_chr, ref_ld, log):
+    '''Read reference LD Scores.'''
+    ref_ld = _read_chr_split_files(ref_ld_chr, ref_ld, log, 'reference panel LD Score', ps.ldscore_fromlist)
+    log.log(
+        'Read reference panel LD Scores for {N} SNPs.'.format(N=len(ref_ld)))
+    return ref_ld
+
+
 def _read_annot(args, log):
     '''Read annot matrix.'''
     try:
@@ -115,6 +123,21 @@ def _read_M(args, log, n_annot):
         elif args.ref_ld_chr:
             M_annot = ps.M_fromlist(
                 _splitp(args.ref_ld_chr), _N_CHR, common=(not args.not_M_5_50))
+
+    try:
+        M_annot = np.array(M_annot).reshape((1, n_annot))
+    except ValueError as e:
+        raise ValueError(
+            '# terms in --M must match # of LD Scores in --ref-ld.\n' + str(e.args))
+
+    return M_annot
+
+
+def _read_split_M(args, ref_ld_chr, ref_ld, n_annot):
+    if ref_ld:
+        M_annot = ps.M_fromlist([ref_ld], common=(not args.not_M_5_50))
+    elif ref_ld_chr:
+        M_annot = ps.M_fromlist([ref_ld_chr], _N_CHR, common=(not args.not_M_5_50))
 
     try:
         M_annot = np.array(M_annot).reshape((1, n_annot))
@@ -253,18 +276,39 @@ def _merge_and_log(ld, sumstats, noun, log):
     return sumstats
 
 
-def _read_multi_ld_sumstats(args, log, fh_list, alleles=False, dropna=True):
-    ref_ld = _read_ref_ld(args, log)
-    n_annot = len(ref_ld.columns) - 1
-    M_annot = _read_M(args, log, n_annot)
-    M_annot, ref_ld, novar_cols = _check_variance(log, M_annot, ref_ld)
+def _read_multi_data(args, log, fh_list, alleles=False, dropna=True):
     w_ld = _read_w_ld(args, log)
-    for sumstats in _yield_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna):
-        sumstats = _merge_and_log(ref_ld, sumstats, 'reference panel LD', log)
-        sumstats = _merge_and_log(sumstats, w_ld, 'regression SNP LD', log)
-        w_ld_cname = sumstats.columns[-1]
-        ref_ld_cnames = ref_ld.columns[1:len(ref_ld.columns)]
-        yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols
+    if args.ref_ld:
+        fnames = [(None, fname) for fname in _splitp(args.ref_ld)]
+    elif args.ref_ld_chr:
+        fnames = [(fname, None) for fname in _splitp(args.ref_ld_chr)]
+    else:
+        raise Exception('ref_ld or ref_ld_chr must be specified')
+    baseline_ld = _read_split_ref_ld(*fnames[0], log)
+    baseline_n = len(baseline_ld.columns) - 1
+    baseline_M = _read_split_M(args, *fnames[0], baseline_n)
+    baseline_M, baseline_ld, baseline_novar_cols = _check_variance(log, baseline_M, baseline_ld)
+    if args.overlap_annot:
+        full_overlap_matrix, M_tot = _read_annot(args, log)
+    baseline_idx = [i for i in range(baseline_ld.shape[1] - 1)]
+    end_idx = baseline_ld.shape[1] - 1
+    for fname in fnames[1:]:
+        file_ld = _read_split_ref_ld(*fname, log).drop(['SNP'], axis=1)
+        start_idx = end_idx
+        end_idx = start_idx + file_ld.shape[1]
+        n_annot = len(file_ld.columns)
+        file_M = _read_split_M(args, *fname, n_annot)
+        M_annot, ref_ld, novar_cols = _check_variance(log, np.hstack((baseline_M, file_M)), pd.concat([baseline_ld, file_ld], axis=1))
+        for sumstats in _yield_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna):
+            sumstats = _merge_and_log(ref_ld, sumstats, 'reference panel LD', log)
+            sumstats = _merge_and_log(sumstats, w_ld, 'regression SNP LD', log)
+            w_ld_cname = sumstats.columns[-1]
+            ref_ld_cnames = ref_ld.columns[1:len(ref_ld.columns)]
+            if args.overlap_annot:
+                split_idxs = baseline_idx + [i for i in range(start_idx, end_idx)]
+                yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, full_overlap_matrix[split_idxs, :][:, split_idxs], M_tot
+            else:
+                yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, None, None
 
 
 def _read_ld_sumstats(args, log, fh, alleles=False, dropna=True):
@@ -350,10 +394,8 @@ def estimate_h2(args, log):
         args.intercept_h2 = float(args.intercept_h2)
     if args.no_intercept:
         args.intercept_h2 = 1
-    if args.overlap_annot:
-        full_overlap_matrix, M_tot = _read_annot(args, log)
-    for sumstats_out, out in zip(_read_multi_ld_sumstats(args, log, args.h2), args.out.split(',')):
-        M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols = sumstats_out
+    for sumstats_out, out in zip(_read_multi_data(args, log, args.h2), args.out.split(',')):
+        M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, overlap_matrix, M_tot = sumstats_out
         print(out)
         ref_ld = np.array(sumstats[ref_ld_cnames])
         _check_ld_condnum(args, log, ref_ld_cnames)
@@ -385,54 +427,23 @@ def estimate_h2(args, log):
         if args.two_step is not None:
             log.log('Using two-step estimator with cutoff at {M}.'.format(M=args.two_step))
 
-        if args.h2_split_annot:
-            split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
-            baseline_file, annot_files = split_files[0], split_files[1:]
-            baseline_width = ref_ld.shape[1] - len(annot_files)
-            baseline_idxs = list(range(baseline_width))
-            log.log(f'Assuming {baseline_file} is baseline with {len(annot_files)} annot files (e.g. {annot_files[0]})')
-            h2_split = [(f'{out}.{ps.base_name(annot)}', baseline_idxs + [baseline_width + idx]) for idx, annot in enumerate(annot_files)]
-        else:
-            baseline_width = ref_ld.shape[1]
-            baseline_idxs = list(range(baseline_width))
-            h2_split = [(out, list(range(ref_ld.shape[1])))]
+        baseline_w = reg.Hsq.initial_w(chisq, ref_ld, s(sumstats[w_ld_cname]),
+                                       s(sumstats.N), M_annot, args.intercept_h2)
+        hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
+                         M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
+                         twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
 
-        if args.xtx_override:
-            baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, baseline_idxs], s(sumstats[w_ld_cname]),
-                                           s(sumstats.N), M_annot[:, baseline_idxs], args.intercept_h2)
-            full_hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
-                             M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
-                             twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
-            xty, xtx = full_hsqhat.jknife.xty, full_hsqhat.jknife.xtx
+        if args.print_cov:
+            _print_cov(hsqhat, out + '.cov', log)
+        if args.print_delete_vals:
+            _print_delete_values(hsqhat, out + '.delete', log)
+            _print_part_delete_values(hsqhat, out + '.part_delete', log)
 
-        for file_out, split_idxs in h2_split:
-            if args.xtx_override:
-                override_split_idxs = split_idxs if args.intercept_h2 is not None else split_idxs + [xty.shape[1] - 1]
-                xty_override = xty[:, override_split_idxs]
-                xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
-            else:
-                xty_override, xtx_override = None, None
-                baseline_w = reg.Hsq.initial_w(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]),
-                                               s(sumstats.N), M_annot[:, split_idxs], args.intercept_h2)
-            hsqhat = reg.Hsq(chisq, ref_ld[:, split_idxs], s(sumstats[w_ld_cname]), s(sumstats.N),
-                             M_annot[:, split_idxs], n_blocks=n_blocks, intercept=args.intercept_h2,
-                             twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w,
-                             xty_override=xty_override, xtx_override=xtx_override)
-
-            if args.print_cov:
-                _print_cov(hsqhat, file_out + '.cov', log)
-            if args.print_delete_vals:
-                _print_delete_values(hsqhat, file_out + '.delete', log)
-                _print_part_delete_values(hsqhat, file_out + '.part_delete', log)
-
-            log.log(hsqhat.summary(ref_ld_cnames, P=args.samp_prev, K=args.pop_prev, overlap = args.overlap_annot))
-            if args.overlap_annot:
-                overlap_matrix = full_overlap_matrix[split_idxs, :][:, split_idxs]
-
-                # overlap_matrix = overlap_matrix[np.array(~novar_cols), np.array(~novar_cols)]#np.logical_not
-                df_results = hsqhat._overlap_output(ref_ld_cnames[split_idxs], overlap_matrix, M_annot[:, split_idxs], M_tot, args.print_coefficients)
-                df_results.to_csv(file_out+'.results', sep="\t", index=False)
-                log.log('Results printed to '+file_out+'.results')
+        log.log(hsqhat.summary(ref_ld_cnames, P=args.samp_prev, K=args.pop_prev, overlap=args.overlap_annot))
+        if args.overlap_annot:
+            df_results = hsqhat._overlap_output(ref_ld_cnames, overlap_matrix, M_annot, M_tot, args.print_coefficients)
+            df_results.to_csv(out + '.results', sep="\t", index=False)
+            log.log('Results printed to ' + out + '.results')
 
     return hsqhat
 
