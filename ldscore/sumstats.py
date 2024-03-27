@@ -192,7 +192,8 @@ def _yield_sumstats(args, log, fh_list, alleles=False, dropna=False):
         if m > len(sumstats):
             log.log(
                 'Dropped {M} SNPs with duplicated rs numbers.'.format(M=m - len(sumstats)))
-        yield sumstats
+        sumstats_fname = fh.split('/')[-1].replace('.sumstats.gz', '')
+        yield sumstats_fname, sumstats
 
 
 def _read_sumstats(args, log, fh, alleles=False, dropna=False):
@@ -293,22 +294,26 @@ def _read_multi_data(args, log, fh_list, alleles=False, dropna=True):
     baseline_idx = [i for i in range(baseline_ld.shape[1] - 1)]
     end_idx = baseline_ld.shape[1] - 1
     for fname in fnames[1:]:
+        annot_file = fname[0] if fname[0] is not None else fname[1]
         file_ld = _read_split_ref_ld(*fname, log).drop(['SNP'], axis=1)
         start_idx = end_idx
         end_idx = start_idx + file_ld.shape[1]
         n_annot = len(file_ld.columns)
         file_M = _read_split_M(args, *fname, n_annot)
         M_annot, ref_ld, novar_cols = _check_variance(log, np.hstack((baseline_M, file_M)), pd.concat([baseline_ld, file_ld], axis=1))
-        for sumstats in _yield_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna):
+        for sumstats_fname, sumstats in _yield_sumstats(args, log, fh_list, alleles=alleles, dropna=dropna):
             sumstats = _merge_and_log(ref_ld, sumstats, 'reference panel LD', log)
             sumstats = _merge_and_log(sumstats, w_ld, 'regression SNP LD', log)
             w_ld_cname = sumstats.columns[-1]
             ref_ld_cnames = ref_ld.columns[1:len(ref_ld.columns)]
+            name = f'{sumstats_fname}.{ps.base_name(annot_file)}'
+            out_file = f'{args.out}/{name}/{name}'
             if args.overlap_annot:
                 split_idxs = baseline_idx + [i for i in range(start_idx, end_idx)]
-                yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, full_overlap_matrix[split_idxs, :][:, split_idxs], M_tot
+                overlap_matrix = full_overlap_matrix[split_idxs, :][:, split_idxs]
+                yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, overlap_matrix, M_tot, out_file
             else:
-                yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, None, None
+                yield M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, None, None, out_file
 
 
 def _read_ld_sumstats(args, log, fh, alleles=False, dropna=True):
@@ -394,8 +399,8 @@ def estimate_h2(args, log):
         args.intercept_h2 = float(args.intercept_h2)
     if args.no_intercept:
         args.intercept_h2 = 1
-    for sumstats_out, out in zip(_read_multi_data(args, log, args.h2), args.out.split(',')):
-        M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, overlap_matrix, M_tot = sumstats_out
+    for sumstats_out in _read_multi_data(args, log, args.h2):
+        M_annot, w_ld_cname, ref_ld_cnames, sumstats, novar_cols, overlap_matrix, M_tot, out = sumstats_out
         print(out)
         ref_ld = np.array(sumstats[ref_ld_cnames])
         _check_ld_condnum(args, log, ref_ld_cnames)
