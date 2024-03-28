@@ -421,7 +421,6 @@ def estimate_h2(args, log):
         for file_out, split_idxs in h2_split:
             if args.xtx_override:
                 override_split_idxs = split_idxs if args.intercept_h2 is not None else split_idxs + [xty.shape[1] - 1]
-                print(override_split_idxs)
                 xty_override = xty[:, override_split_idxs]
                 xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
             else:
