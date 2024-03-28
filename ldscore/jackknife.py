@@ -481,16 +481,18 @@ class LstsqJackknifeFast(Jackknife, LstsqJackknifeFastObject):
 
     '''
 
-    def __init__(self, x, y, n_blocks=None, separators=None):
+    def __init__(self, x, y, n_blocks=None, separators=None, only_xtx=False):
         Jackknife.__init__(self, x, y, n_blocks, separators)
 
         self.xty, self.xtx = self.block_values(x, y, self.separators)
-        self.est = self.block_values_to_est(self.xty, self.xtx)
-        self.delete_values = self.block_values_to_delete_values(self.xty, self.xtx)
-        self.pseudovalues = self.delete_values_to_pseudovalues(
-            self.delete_values, self.est)
-        (self.jknife_est, self.jknife_var, self.jknife_se, self.jknife_cov) = \
-            self.jknife(self.pseudovalues)
+
+        if not only_xtx:
+            self.est = self.block_values_to_est(self.xty, self.xtx)
+            self.delete_values = self.block_values_to_delete_values(self.xty, self.xtx)
+            self.pseudovalues = self.delete_values_to_pseudovalues(
+                self.delete_values, self.est)
+            (self.jknife_est, self.jknife_var, self.jknife_se, self.jknife_cov) = \
+                self.jknife(self.pseudovalues)
 
 
 class LstsqJackknifeFromXTX(JackknifeObject, LstsqJackknifeFastObject):

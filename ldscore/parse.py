@@ -100,6 +100,10 @@ def sumstats(fh, alleles=False, dropna=True):
     return x
 
 
+def num_columns(flist, num=None):
+    return [ld_header(f, num=num).shape[1] for f in flist]
+
+
 def ldscore_fromlist(flist, num=None):
     '''Sideways concatenation of a list of LD Score files.'''
     ldscore_array = []
@@ -119,9 +123,9 @@ def ldscore_fromlist(flist, num=None):
     return pd.concat(ldscore_array, axis=1)
 
 
-def l2_parser(fh, compression):
+def l2_parser(fh, compression, nrows=None):
     '''Parse LD Score files'''
-    x = read_csv(fh, header=0, compression=compression)
+    x = read_csv(fh, header=0, compression=compression, nrows=nrows)
     if 'MAF' in x.columns and 'CM' in x.columns:  # for backwards compatibility w/ v<1.0.0
         x = x.drop(['MAF', 'CM'], axis=1)
     return x
@@ -162,6 +166,21 @@ def ldscore(fh, num=None):
         x = l2_parser(fh + suffix + s, compression)
 
     x = x.sort_values(by=['CHR', 'BP']) # SEs will be wrong unless sorted
+    x = x.drop(['CHR', 'BP'], axis=1).drop_duplicates(subset='SNP')
+    return x
+
+def ld_header(fh, num=None):
+    '''Parse .l2.ldscore files, split across num chromosomes. See docs/file_formats_ld.txt.'''
+    suffix = '.l2.ldscore'
+    if num is not None:  # num files, e.g., one per chromosome
+        chrs = get_present_chrs(fh, num+1)
+        first_fh = sub_chr(fh, chrs[0]) + suffix
+        s, compression = which_compression(first_fh)
+        x = l2_parser(sub_chr(fh, chrs[0]) + suffix + s, compression, nrows=1)
+    else:  # just one file
+        s, compression = which_compression(fh + suffix)
+        x = l2_parser(fh + suffix + s, compression, nrows=1)
+
     x = x.drop(['CHR', 'BP'], axis=1).drop_duplicates(subset='SNP')
     return x
 

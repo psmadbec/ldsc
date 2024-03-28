@@ -253,6 +253,11 @@ def _merge_and_log(ld, sumstats, noun, log):
     return sumstats
 
 
+def get_widths(args, flist):
+    num = _N_CHR if args.ref_ld_chr else None
+    return ps.num_columns(flist, num)
+
+
 def _read_multi_ld_sumstats(args, log, fh_list, alleles=False, dropna=True):
     ref_ld = _read_ref_ld(args, log)
     n_annot = len(ref_ld.columns) - 1
@@ -387,11 +392,19 @@ def estimate_h2(args, log):
 
         if args.h2_split_annot:
             split_files = args.ref_ld.split(',') if args.ref_ld is not None else args.ref_ld_chr.split(',')
+            widths = get_widths(args, split_files)
             baseline_file, annot_files = split_files[0], split_files[1:]
-            baseline_width = ref_ld.shape[1] - len(annot_files)
+            baseline_width = widths[0] - 1
             baseline_idxs = list(range(baseline_width))
             log.log(f'Assuming {baseline_file} is baseline with {len(annot_files)} annot files (e.g. {annot_files[0]})')
-            h2_split = [(f'{out}.{ps.base_name(annot)}', baseline_idxs + [baseline_width + idx]) for idx, annot in enumerate(annot_files)]
+            h2_split = []
+            end = baseline_width
+            for annot_file, width in zip(annot_files, widths[1:]):
+                out_name = f'{out}.{ps.base_name(annot_file)}'
+                start = end
+                end = start + width - 1
+                idxs = baseline_idxs + [idx for idx in range(start, end)]
+                h2_split.append((out_name, idxs))
         else:
             baseline_width = ref_ld.shape[1]
             baseline_idxs = list(range(baseline_width))
@@ -402,12 +415,13 @@ def estimate_h2(args, log):
                                            s(sumstats.N), M_annot[:, baseline_idxs], args.intercept_h2)
             full_hsqhat = reg.Hsq(chisq, ref_ld, s(sumstats[w_ld_cname]), s(sumstats.N),
                              M_annot, n_blocks=n_blocks, intercept=args.intercept_h2,
-                             twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w)
+                             twostep=args.two_step, old_weights=old_weights, initial_w=baseline_w, only_xtx=True)
             xty, xtx = full_hsqhat.jknife.xty, full_hsqhat.jknife.xtx
 
         for file_out, split_idxs in h2_split:
             if args.xtx_override:
                 override_split_idxs = split_idxs if args.intercept_h2 is not None else split_idxs + [xty.shape[1] - 1]
+                print(override_split_idxs)
                 xty_override = xty[:, override_split_idxs]
                 xtx_override = xtx[:, override_split_idxs, :][:, :, override_split_idxs]
             else:
