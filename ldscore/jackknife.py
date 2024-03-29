@@ -27,8 +27,9 @@ def _check_shape(x, y):
     if y.shape[1] != 1:
         raise ValueError('y must have shape (n_snp, 1)')
     n, p = x.shape
-    if p > n:
-        raise ValueError('More dimensions than datapoints.')
+    # TODO: Needed to remove this for xtx_override speed up
+    # if p > n:
+    #     raise ValueError('More dimensions than datapoints.')
 
     return (n, p)
 
